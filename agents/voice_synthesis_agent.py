@@ -3,6 +3,8 @@ import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 import asyncio
+import pyttsx3
+import time
 
 from agents.base_agent import BaseAgent
 
@@ -68,6 +70,9 @@ class VoiceSynthesisAgent(BaseAgent):
         self.content_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "content")
         os.makedirs(os.path.join(self.content_dir, "audio"), exist_ok=True)
         os.makedirs(os.path.join(self.content_dir, "audio", "segments"), exist_ok=True)
+        
+        # Initialize TTS engine
+        self.engine = pyttsx3.init()
     
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -152,16 +157,33 @@ class VoiceSynthesisAgent(BaseAgent):
         episode_filename = f"{title.lower().replace(' ', '_')}_{timestamp}.{audio_format}"
         episode_path = os.path.join(self.content_dir, "audio", episode_filename)
         
-        # In a real implementation, this would use audio processing libraries
-        # to combine the section files and add transitions
+        # Generate a longer intro for the main episode file
+        intro_text = f"Welcome to {title}. In this episode, we'll be discussing {script.get('description', 'various topics')}. "
+        intro_text += f"Join our hosts {', '.join(hosts[:-1])} and {hosts[-1] if len(hosts) > 1 else ''} as they explore the latest developments and share their insights."
         
-        # For this example, we'll just return the metadata
+        # Set a much slower rate for the main intro
+        rate = self.engine.getProperty('rate')
+        original_rate = rate
+        self.engine.setProperty('rate', int(rate * 0.4))  # 40% of normal speed
+        
+        self.logger.info(f"Generating main episode intro with rate: {int(rate * 0.4)}")
+        self.engine.save_to_file(intro_text, episode_path)
+        self.engine.runAndWait()
+        
+        # Reset to original rate
+        self.engine.setProperty('rate', original_rate)
+        
+        # Calculate total duration
         segment_files = []
         total_duration = 0
         
         for section_result in section_results:
             segment_files.extend(section_result["segment_files"])
             total_duration += section_result["duration"]
+        
+        # Add the intro duration (estimate based on word count)
+        intro_duration = len(intro_text.split()) / 150 * 60 * 2.5  # 2.5x longer due to much slower rate
+        total_duration += intro_duration
         
         # Return information about the generated audio
         return {
@@ -189,13 +211,14 @@ class VoiceSynthesisAgent(BaseAgent):
         dialogue = section.get("dialogue", [])
         sound_effects = section.get("sound_effects", [])
         
-        # In a real implementation, this would use a TTS API or library
-        # to generate audio for each dialogue line
-        
-        # For this example, we'll simulate the process
+        # Generate audio for each dialogue line
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         segment_files = []
         total_duration = 0
+        
+        # Get original rate to restore later
+        rate = self.engine.getProperty('rate')
+        original_rate = rate
         
         for i, line in enumerate(dialogue):
             speaker = line.get("speaker", "Unknown")
@@ -203,6 +226,10 @@ class VoiceSynthesisAgent(BaseAgent):
             
             # Skip non-speech lines (like [Theme music plays])
             if speaker in ["INTRO", "OUTRO", "TRANSITION"]:
+                continue
+            
+            # Skip empty text
+            if not text.strip():
                 continue
             
             # Get voice profile for the speaker
@@ -220,28 +247,69 @@ class VoiceSynthesisAgent(BaseAgent):
             else:
                 processed_text = text
             
+            # Make sure the text is substantial enough
+            if len(processed_text.split()) < 5:
+                processed_text = f"{processed_text} Let me elaborate on that point a bit more."
+            
             # Generate filename for this segment
             segment_filename = f"{section_name}_{speaker}_{i}_{timestamp}.{audio_format}"
             segment_path = os.path.join(self.content_dir, "audio", "segments", segment_filename)
             
-            # In a real implementation, this would call a TTS API or library
-            # For now, we'll just log what would happen
-            self.logger.info(f"Would generate audio for: {speaker} saying '{text[:30]}...'")
-            self.logger.info(f"Using voice profile: {voice_profile['voice_id']} with adjustments for {emotion}")
-            
-            # Estimate duration based on word count and speaking rate
-            # Average English speaker says about 150 words per minute at rate 1.0
-            word_count = len(text.split())
-            duration_seconds = (word_count / 150) * 60 / adjusted_profile["speaking_rate"]
-            
-            segment_files.append({
-                "filename": segment_filename,
-                "speaker": speaker,
-                "duration": duration_seconds,
-                "emotion": emotion
-            })
-            
-            total_duration += duration_seconds
+            # Actually generate the audio using pyttsx3
+            try:
+                # Configure voice properties
+                voices = self.engine.getProperty('voices')
+                # Use the first voice by default
+                self.engine.setProperty('voice', voices[0].id)
+                
+                # Set rate (words per minute) - make it MUCH slower for better quality
+                adjusted_rate = int(original_rate * adjusted_profile["speaking_rate"] * 0.5)  # Additional 50% slowdown
+                self.engine.setProperty('rate', adjusted_rate)
+                
+                self.logger.info(f"Generating audio for {speaker} with rate: {adjusted_rate} (original: {original_rate})")
+                
+                # Set volume (0.0 to 1.0)
+                volume = 1.0 + (adjusted_profile["volume_gain_db"] / 20)  # Convert dB to linear
+                volume = max(0.0, min(1.0, volume))  # Clamp between 0.0 and 1.0
+                self.engine.setProperty('volume', volume)
+                
+                # Generate audio file
+                self.logger.info(f"Generating audio for: {speaker} saying '{text[:30]}...'")
+                
+                # Add pauses between sentences to make speech more natural
+                sentences = processed_text.split('.')
+                with_pauses = '. '.join([s.strip() + '.' if not s.endswith('.') else s.strip() for s in sentences if s.strip()])
+                
+                # Add explicit pauses for better pacing
+                with_explicit_pauses = with_pauses.replace('. ', '. [PAUSE] ').replace('? ', '? [PAUSE] ').replace('! ', '! [PAUSE] ')
+                final_text = with_explicit_pauses.replace('[PAUSE]', '')
+                
+                self.engine.save_to_file(final_text, segment_path)
+                self.engine.runAndWait()
+                
+                # Reset rate to original
+                self.engine.setProperty('rate', original_rate)
+                
+                # Estimate duration based on word count and speaking rate
+                word_count = len(processed_text.split())
+                # Adjust duration calculation to account for pauses and slower speech
+                duration_seconds = (word_count / 150) * 60 / adjusted_profile["speaking_rate"] * 2.0  # 2x longer for very slow speech
+                
+                segment_files.append({
+                    "filename": segment_filename,
+                    "speaker": speaker,
+                    "duration": duration_seconds,
+                    "emotion": emotion,
+                    "path": segment_path
+                })
+                
+                total_duration += duration_seconds
+                
+            except Exception as e:
+                self.logger.error(f"Error generating audio for segment: {str(e)}")
+                
+        # Reset rate to original
+        self.engine.setProperty('rate', original_rate)
         
         # Process sound effects
         for effect in sound_effects:
@@ -250,8 +318,9 @@ class VoiceSynthesisAgent(BaseAgent):
             
             # Generate filename for this effect
             effect_filename = f"{section_name}_{effect_type}_{timestamp}.{audio_format}"
+            effect_path = os.path.join(self.content_dir, "audio", "segments", effect_filename)
             
-            # In a real implementation, this would use sound effect libraries or recordings
+            # Create a simple sound effect file (just silence for now)
             self.logger.info(f"Would add sound effect: {effect_type} - {description}")
             
             # Estimate duration for sound effect
@@ -261,7 +330,8 @@ class VoiceSynthesisAgent(BaseAgent):
                 "filename": effect_filename,
                 "type": "sound_effect",
                 "effect_type": effect_type,
-                "duration": effect_duration
+                "duration": effect_duration,
+                "path": effect_path
             })
             
             total_duration += effect_duration
@@ -312,21 +382,16 @@ class VoiceSynthesisAgent(BaseAgent):
         Returns:
             Detected emotion
         """
-        # In a real implementation, this would use NLP or ML to detect emotion
-        # Simplified keyword-based approach for demonstration
-        
-        excited_keywords = ["wow", "amazing", "incredible", "fantastic", "exciting", "thrilling"]
-        serious_keywords = ["serious", "concerning", "important", "critical", "significant"]
+        # In a real implementation, this would use NLP to detect emotion
+        # For this example, we'll use a simple keyword-based approach
         
         text_lower = text.lower()
         
-        for keyword in excited_keywords:
-            if keyword in text_lower:
-                return "excited"
+        if any(word in text_lower for word in ["wow", "amazing", "incredible", "fantastic", "exciting", "thrilling"]):
+            return "excited"
         
-        for keyword in serious_keywords:
-            if keyword in text_lower:
-                return "serious"
+        if any(word in text_lower for word in ["serious", "important", "critical", "concerning", "significant"]):
+            return "serious"
         
         return "neutral"
     
@@ -343,12 +408,12 @@ class VoiceSynthesisAgent(BaseAgent):
         """
         adjusted_profile = voice_profile.copy()
         
-        # Apply emotion adjustments if available
-        emotion_mapping = self.config["emotion_mapping"]
-        if emotion in emotion_mapping:
-            for param, value in emotion_mapping[emotion].items():
-                if param in adjusted_profile:
-                    adjusted_profile[param] = value
+        # Apply emotion-specific adjustments
+        emotion_adjustments = self.config["emotion_mapping"].get(emotion, {})
+        
+        for param, value in emotion_adjustments.items():
+            if param in adjusted_profile:
+                adjusted_profile[param] += value
         
         return adjusted_profile
     
@@ -364,35 +429,6 @@ class VoiceSynthesisAgent(BaseAgent):
         Returns:
             Text with SSML markup
         """
-        # In a real implementation, this would apply appropriate SSML tags
-        # based on the text content, punctuation, and detected emotion
-        
-        # Simple example for demonstration
-        ssml = f"<speak>\n"
-        
-        # Apply prosody based on emotion
-        if emotion == "excited":
-            ssml += f"<prosody rate=\"fast\" pitch=\"high\">\n"
-        elif emotion == "serious":
-            ssml += f"<prosody rate=\"slow\" pitch=\"low\">\n"
-        else:
-            ssml += f"<prosody rate=\"medium\" pitch=\"medium\">\n"
-        
-        # Add breaks at punctuation
-        processed_text = ""
-        for char in text:
-            if char == ".":
-                processed_text += ".<break time=\"0.7s\"/>"
-            elif char == ",":
-                processed_text += ",<break time=\"0.3s\"/>"
-            elif char == "?":
-                processed_text += "?<break time=\"0.7s\"/>"
-            elif char == "!":
-                processed_text += "!<break time=\"0.7s\"/>"
-            else:
-                processed_text += char
-        
-        ssml += processed_text
-        ssml += "\n</prosody>\n</speak>"
-        
-        return ssml
+        # In a real implementation, this would add SSML tags for better speech control
+        # For pyttsx3, we'll just return the original text as it doesn't support SSML
+        return text

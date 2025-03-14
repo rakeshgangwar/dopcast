@@ -352,7 +352,7 @@ class CoordinationAgent(BaseAgent):
         filename = f"{run_id}.json"
         filepath = os.path.join(self.run_history_dir, filename)
         
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(run_record, f, indent=2)
         
         self.logger.info(f"Saved run record to {filepath}")

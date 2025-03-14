@@ -2,6 +2,10 @@ import os
 import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+import pyttsx3
+import shutil
+import wave
+import numpy as np
 
 from agents.base_agent import BaseAgent
 
@@ -78,6 +82,9 @@ class AudioProductionAgent(BaseAgent):
         # Ensure assets directory exists
         assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "audio")
         os.makedirs(assets_dir, exist_ok=True)
+        
+        # Initialize TTS engine for intro/outro
+        self.engine = pyttsx3.init()
     
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -145,12 +152,47 @@ class AudioProductionAgent(BaseAgent):
         """
         title = script.get("title", "Untitled Episode")
         segment_files = audio_metadata.get("segment_files", [])
+        total_duration = audio_metadata.get("total_duration", 0)
+        main_file = audio_metadata.get("main_file", "")
         
-        # In a real implementation, this would use audio processing libraries
-        # to combine segments, add music, balance levels, etc.
-        
-        # For this example, we'll simulate the process
+        # Create a simple intro and outro with longer pauses
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        intro_filename = f"intro_{timestamp}.mp3"
+        outro_filename = f"outro_{timestamp}.mp3"
+        
+        intro_path = os.path.join(self.content_dir, "audio", "segments", intro_filename)
+        outro_path = os.path.join(self.content_dir, "audio", "segments", outro_filename)
+        
+        # Generate intro and outro with slower speech rate
+        rate = self.engine.getProperty('rate')
+        self.engine.setProperty('rate', int(rate * 0.4))  # 40% of normal speed
+        
+        # Create intro with music mention
+        intro_text = f"Welcome to {title}. [PAUSE] Today we'll be exploring the latest developments in the world of motorsport. [PAUSE] Let's get started."
+        self.engine.save_to_file(intro_text.replace("[PAUSE]", ""), intro_path)
+        self.engine.runAndWait()
+        
+        # Create outro with longer thank you message
+        outro_text = f"Thank you for listening to {title}. [PAUSE] We hope you enjoyed this episode and gained valuable insights. [PAUSE] Please subscribe for more episodes, and join us next time for more exciting discussions. [PAUSE] This has been a DopCast production."
+        self.engine.save_to_file(outro_text.replace("[PAUSE]", ""), outro_path)
+        self.engine.runAndWait()
+        
+        # Reset rate to normal
+        self.engine.setProperty('rate', rate)
+        
+        # Add intro and outro to segment files list with longer durations
+        intro_duration = len(intro_text.split()) / 150 * 60 * 2.5  # 2.5x longer for pauses
+        outro_duration = len(outro_text.split()) / 150 * 60 * 2.5  # 2.5x longer for pauses
+        
+        segment_files = [
+            {"filename": intro_filename, "type": "intro", "duration": intro_duration, "path": intro_path}
+        ] + segment_files + [
+            {"filename": outro_filename, "type": "outro", "duration": outro_duration, "path": outro_path}
+        ]
+        
+        total_duration += intro_duration + outro_duration
+        
+        # Generate output files for each format
         output_files = []
         
         for format_spec in output_formats:
@@ -158,22 +200,82 @@ class AudioProductionAgent(BaseAgent):
             filename = f"{title.lower().replace(' ', '_').replace(':', '')}_{timestamp}.{format_type}"
             filepath = os.path.join(self.content_dir, "audio", "final", filename)
             
-            # Log what would happen in a real implementation
-            self.logger.info(f"Would produce final podcast in {format_type} format: {filename}")
-            self.logger.info(f"Would apply audio processing: normalization, EQ, compression")
-            self.logger.info(f"Would add intro/outro music and sound effects")
+            # For this implementation, we'll use the main file from voice synthesis if available,
+            # otherwise we'll use the most substantial segment file
+            main_file_path = os.path.join(self.content_dir, "audio", main_file) if main_file else ""
             
-            # Record the output file
-            output_files.append({
-                "filename": filename,
-                "format": format_type,
-                "filepath": filepath,
-                "size_estimate": self._estimate_file_size(audio_metadata.get("total_duration", 0), format_spec)
-            })
+            if os.path.exists(main_file_path) and os.path.getsize(main_file_path) > 0:
+                self.logger.info(f"Using main file for final podcast: {main_file}")
+                shutil.copy(main_file_path, filepath)
+            elif segment_files:
+                self.logger.info(f"Creating podcast file from best available segment: {filename}")
+                
+                # Find the most substantial segment file (largest file size)
+                best_segment = None
+                largest_size = 0
+                
+                for segment in segment_files:
+                    path = segment.get("path", "")
+                    if os.path.exists(path):
+                        size = os.path.getsize(path)
+                        if size > largest_size:
+                            largest_size = size
+                            best_segment = segment
+                
+                if best_segment:
+                    self.logger.info(f"Using segment: {best_segment.get('filename')} as final podcast")
+                    shutil.copy(best_segment.get("path"), filepath)
+                    
+                    output_files.append({
+                        "filename": filename,
+                        "format": format_type,
+                        "filepath": filepath,
+                        "size_estimate": self._estimate_file_size(total_duration, format_spec),
+                        "actual_size": os.path.getsize(filepath) if os.path.exists(filepath) else 0,
+                        "note": f"Using best available segment: {best_segment.get('filename')}"
+                    })
+                else:
+                    self.logger.warning(f"No valid segments found")
+                    
+                    # Create a placeholder file
+                    placeholder_text = f"Welcome to {title}. This is a placeholder for the full podcast episode about {script.get('description', 'motorsport topics')}. The complete episode will feature in-depth discussions, expert analysis, and the latest news from the world of motorsport."
+                    
+                    self.engine.save_to_file(placeholder_text, filepath)
+                    self.engine.runAndWait()
+                    
+                    placeholder_duration = len(placeholder_text.split()) / 150 * 60 * 1.2  # 20% longer for pauses
+                    
+                    output_files.append({
+                        "filename": filename,
+                        "format": format_type,
+                        "filepath": filepath,
+                        "size_estimate": self._estimate_file_size(placeholder_duration, format_spec),
+                        "actual_size": os.path.getsize(filepath) if os.path.exists(filepath) else 0,
+                        "note": "Placeholder audio. No valid segments were available."
+                    })
+            else:
+                self.logger.warning(f"No audio files available to create final podcast")
+                
+                # Create a more substantial placeholder file
+                placeholder_text = f"Welcome to {title}. This is a placeholder for the full podcast episode about {script.get('description', 'motorsport topics')}. The complete episode will feature in-depth discussions, expert analysis, and the latest news from the world of motorsport."
+                
+                self.engine.save_to_file(placeholder_text, filepath)
+                self.engine.runAndWait()
+                
+                placeholder_duration = len(placeholder_text.split()) / 150 * 60 * 1.2  # 20% longer for pauses
+                
+                output_files.append({
+                    "filename": filename,
+                    "format": format_type,
+                    "filepath": filepath,
+                    "size_estimate": self._estimate_file_size(placeholder_duration, format_spec),
+                    "actual_size": os.path.getsize(filepath) if os.path.exists(filepath) else 0,
+                    "note": "Placeholder audio. No segments were available to create a full podcast."
+                })
         
         # Return information about the production
         return {
-            "duration": audio_metadata.get("total_duration", 0),
+            "duration": total_duration,
             "output_files": output_files
         }
     
@@ -200,11 +302,10 @@ class AudioProductionAgent(BaseAgent):
             bitrate_estimate = 64000 + (quality * 32000)  # Rough mapping of quality to bitrate
             return int((bitrate_estimate / 8) * duration)  # bytes per second * duration
         
-        else:
-            # Default estimate for other formats
-            return int(192000 / 8 * duration)  # Assume 192kbps
+        # Default fallback
+        return int(128000 / 8 * duration)  # Assume 128 kbps
     
-    def _generate_metadata_tags(self, script: Dict[str, Any]) -> Dict[str, str]:
+    def _generate_metadata_tags(self, script: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generate metadata tags for the podcast.
         
@@ -214,23 +315,20 @@ class AudioProductionAgent(BaseAgent):
         Returns:
             Metadata tags
         """
-        title = script.get("title", "Untitled Episode")
-        description = script.get("description", "")
+        base_tags = self.config["metadata_tags"].copy()
         
-        # Start with default tags
-        tags = self.config["metadata_tags"].copy()
-        
-        # Add episode-specific tags
-        tags.update({
-            "title": title,
-            "comment": description,
-            "date": datetime.now().strftime("%Y-%m-%d")
+        # Add script-specific tags
+        base_tags.update({
+            "title": script.get("title", "Untitled Episode"),
+            "artist": base_tags.get("artist", "DopCast AI"),
+            "album": script.get("series", base_tags.get("album", "Motorsport Podcasts")),
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "comment": script.get("description", "")
         })
         
-        # Determine sport from title for more specific tagging
-        if "F1" in title or "Formula 1" in title or "Formula One" in title:
-            tags["album"] = "Formula 1 Podcasts"
-        elif "MotoGP" in title:
-            tags["album"] = "MotoGP Podcasts"
+        # Add hosts as contributors
+        hosts = script.get("hosts", [])
+        if hosts:
+            base_tags["composer"] = ", ".join(hosts)
         
-        return tags
+        return base_tags

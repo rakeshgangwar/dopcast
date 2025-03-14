@@ -1,0 +1,28 @@
+{
+  "name": "Formula 1",
+  "short_name": "F1",
+  "data_sources": [
+    "https://www.formula1.com",
+    "https://www.autosport.com/f1",
+    "https://www.motorsport.com/f1"
+  ],
+  "teams": [
+    "Red Bull Racing",
+    "Mercedes",
+    "Ferrari",
+    "McLaren",
+    "Aston Martin",
+    "Alpine",
+    "Williams",
+    "AlphaTauri",
+    "Sauber",
+    "Haas"
+  ],
+  "event_types": [
+    "race",
+    "qualifying",
+    "sprint",
+    "practice"
+  ],
+  "podcast_intro": "Welcome to F1 Insider, your ultimate source for Formula 1 analysis and insights."
+}

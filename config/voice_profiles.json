@@ -1,0 +1,34 @@
+{
+  "host_male_1": {
+    "name": "Alex",
+    "gender": "male",
+    "accent": "american",
+    "style": "enthusiastic",
+    "pitch": 1.0,
+    "rate": 1.0
+  },
+  "host_female_1": {
+    "name": "Maria",
+    "gender": "female",
+    "accent": "british",
+    "style": "professional",
+    "pitch": 1.0,
+    "rate": 1.0
+  },
+  "host_male_2": {
+    "name": "James",
+    "gender": "male",
+    "accent": "british",
+    "style": "analytical",
+    "pitch": 0.95,
+    "rate": 0.98
+  },
+  "host_female_2": {
+    "name": "Sophia",
+    "gender": "female",
+    "accent": "american",
+    "style": "conversational",
+    "pitch": 1.05,
+    "rate": 1.02
+  }
+}
