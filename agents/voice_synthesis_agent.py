@@ -3,8 +3,10 @@ import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 import asyncio
-import pyttsx3
 import time
+from gtts import gTTS
+import tempfile
+import shutil
 
 from agents.base_agent import BaseAgent
 
@@ -26,28 +28,28 @@ class VoiceSynthesisAgent(BaseAgent):
             "voice_profiles": [
                 {
                     "name": "Alex",
-                    "voice_id": "en-US-Neural2-A",
+                    "voice_id": "en-us",
                     "pitch": 0,
                     "speaking_rate": 1.0,
                     "volume_gain_db": 0
                 },
                 {
                     "name": "Sam",
-                    "voice_id": "en-US-Neural2-D",
+                    "voice_id": "en-uk",
                     "pitch": -2,
                     "speaking_rate": 0.95,
                     "volume_gain_db": 0
                 }
             ],
             "default_voice": {
-                "voice_id": "en-US-Neural2-F",
+                "voice_id": "en-us",
                 "pitch": 0,
                 "speaking_rate": 1.0,
                 "volume_gain_db": 0
             },
             "audio_format": "mp3",
             "sample_rate": 24000,
-            "use_ssml": True,  # Use Speech Synthesis Markup Language for better control
+            "use_ssml": False,  # gTTS doesn't support SSML
             "emotion_mapping": {
                 "excited": {"pitch": 2, "speaking_rate": 1.2},
                 "serious": {"pitch": -1, "speaking_rate": 0.9},
@@ -70,9 +72,6 @@ class VoiceSynthesisAgent(BaseAgent):
         self.content_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "content")
         os.makedirs(os.path.join(self.content_dir, "audio"), exist_ok=True)
         os.makedirs(os.path.join(self.content_dir, "audio", "segments"), exist_ok=True)
-        
-        # Initialize TTS engine
-        self.engine = pyttsx3.init()
     
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -161,17 +160,11 @@ class VoiceSynthesisAgent(BaseAgent):
         intro_text = f"Welcome to {title}. In this episode, we'll be discussing {script.get('description', 'various topics')}. "
         intro_text += f"Join our hosts {', '.join(hosts[:-1])} and {hosts[-1] if len(hosts) > 1 else ''} as they explore the latest developments and share their insights."
         
-        # Set a much slower rate for the main intro
-        rate = self.engine.getProperty('rate')
-        original_rate = rate
-        self.engine.setProperty('rate', int(rate * 0.4))  # 40% of normal speed
+        self.logger.info(f"Generating main episode intro")
         
-        self.logger.info(f"Generating main episode intro with rate: {int(rate * 0.4)}")
-        self.engine.save_to_file(intro_text, episode_path)
-        self.engine.runAndWait()
-        
-        # Reset to original rate
-        self.engine.setProperty('rate', original_rate)
+        # Generate intro audio with gTTS
+        tts = gTTS(intro_text, lang='en', slow=False)
+        tts.save(episode_path)
         
         # Calculate total duration
         segment_files = []
@@ -182,7 +175,7 @@ class VoiceSynthesisAgent(BaseAgent):
             total_duration += section_result["duration"]
         
         # Add the intro duration (estimate based on word count)
-        intro_duration = len(intro_text.split()) / 150 * 60 * 2.5  # 2.5x longer due to much slower rate
+        intro_duration = len(intro_text.split()) / 150 * 60  # Estimate based on word count
         total_duration += intro_duration
         
         # Return information about the generated audio
@@ -216,10 +209,6 @@ class VoiceSynthesisAgent(BaseAgent):
         segment_files = []
         total_duration = 0
         
-        # Get original rate to restore later
-        rate = self.engine.getProperty('rate')
-        original_rate = rate
-        
         for i, line in enumerate(dialogue):
             speaker = line.get("speaker", "Unknown")
             text = line.get("text", "")
@@ -241,59 +230,30 @@ class VoiceSynthesisAgent(BaseAgent):
             # Apply emotion adjustments
             adjusted_profile = self._adjust_for_emotion(voice_profile, emotion)
             
-            # Prepare text with SSML if enabled
-            if use_ssml:
-                processed_text = self._apply_ssml(text, adjusted_profile, emotion)
-            else:
-                processed_text = text
-            
             # Make sure the text is substantial enough
-            if len(processed_text.split()) < 5:
-                processed_text = f"{processed_text} Let me elaborate on that point a bit more."
+            if len(text.split()) < 5:
+                text = f"{text} Let me elaborate on that point a bit more."
             
             # Generate filename for this segment
             segment_filename = f"{section_name}_{speaker}_{i}_{timestamp}.{audio_format}"
             segment_path = os.path.join(self.content_dir, "audio", "segments", segment_filename)
             
-            # Actually generate the audio using pyttsx3
+            # Actually generate the audio using gTTS
             try:
-                # Configure voice properties
-                voices = self.engine.getProperty('voices')
-                # Use the first voice by default
-                self.engine.setProperty('voice', voices[0].id)
+                # Get language from voice profile
+                lang = adjusted_profile["voice_id"]
                 
-                # Set rate (words per minute) - make it MUCH slower for better quality
-                adjusted_rate = int(original_rate * adjusted_profile["speaking_rate"] * 0.5)  # Additional 50% slowdown
-                self.engine.setProperty('rate', adjusted_rate)
-                
-                self.logger.info(f"Generating audio for {speaker} with rate: {adjusted_rate} (original: {original_rate})")
-                
-                # Set volume (0.0 to 1.0)
-                volume = 1.0 + (adjusted_profile["volume_gain_db"] / 20)  # Convert dB to linear
-                volume = max(0.0, min(1.0, volume))  # Clamp between 0.0 and 1.0
-                self.engine.setProperty('volume', volume)
-                
-                # Generate audio file
+                self.logger.info(f"Generating audio for {speaker} using gTTS")
                 self.logger.info(f"Generating audio for: {speaker} saying '{text[:30]}...'")
                 
-                # Add pauses between sentences to make speech more natural
-                sentences = processed_text.split('.')
-                with_pauses = '. '.join([s.strip() + '.' if not s.endswith('.') else s.strip() for s in sentences if s.strip()])
-                
-                # Add explicit pauses for better pacing
-                with_explicit_pauses = with_pauses.replace('. ', '. [PAUSE] ').replace('? ', '? [PAUSE] ').replace('! ', '! [PAUSE] ')
-                final_text = with_explicit_pauses.replace('[PAUSE]', '')
-                
-                self.engine.save_to_file(final_text, segment_path)
-                self.engine.runAndWait()
-                
-                # Reset rate to original
-                self.engine.setProperty('rate', original_rate)
+                # Generate audio with gTTS
+                tts = gTTS(text, lang=lang, slow=False)
+                tts.save(segment_path)
                 
                 # Estimate duration based on word count and speaking rate
-                word_count = len(processed_text.split())
-                # Adjust duration calculation to account for pauses and slower speech
-                duration_seconds = (word_count / 150) * 60 / adjusted_profile["speaking_rate"] * 2.0  # 2x longer for very slow speech
+                word_count = len(text.split())
+                # Adjust duration calculation to account for pauses and speech
+                duration_seconds = (word_count / 150) * 60 / adjusted_profile["speaking_rate"]
                 
                 segment_files.append({
                     "filename": segment_filename,
@@ -307,9 +267,6 @@ class VoiceSynthesisAgent(BaseAgent):
                 
             except Exception as e:
                 self.logger.error(f"Error generating audio for segment: {str(e)}")
-                
-        # Reset rate to original
-        self.engine.setProperty('rate', original_rate)
         
         # Process sound effects
         for effect in sound_effects:
@@ -430,5 +387,5 @@ class VoiceSynthesisAgent(BaseAgent):
             Text with SSML markup
         """
         # In a real implementation, this would add SSML tags for better speech control
-        # For pyttsx3, we'll just return the original text as it doesn't support SSML
+        # For gTTS, we'll just return the original text as it doesn't support SSML
         return text
