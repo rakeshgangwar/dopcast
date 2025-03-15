@@ -16,7 +16,7 @@ services:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
-    command: python main.py full
+    command: uv run main.py full
 
   # Optional Redis for caching and message queue
   redis:
