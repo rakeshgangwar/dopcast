@@ -1,0 +1,18 @@
+{
+  "STORAGE_PROVIDER": "supabase",
+  "SUPABASE_STORAGE_ENABLED": true,
+  "SUPABASE_STORAGE_BUCKETS": {
+    "audio": {
+      "path": "audio",
+      "public": true
+    },
+    "scripts": {
+      "path": "scripts",
+      "public": true
+    },
+    "user_uploads": {
+      "path": "user_uploads",
+      "public": false
+    }
+  }
+}

@@ -27,7 +27,7 @@ st.markdown("""
 # Sidebar navigation
 page = st.sidebar.selectbox(
     "Navigation", 
-    ["Generate Podcast", "Scheduled Podcasts", "Recent Podcasts", "About"]
+    ["Generate Podcast", "Scheduled Podcasts", "Recent Podcasts", "Podcast Details", "About"]
 )
 
 # Function to call the API
@@ -149,6 +149,11 @@ if page == "Generate Podcast":
             if response:
                 st.success(f"Podcast scheduled for {schedule_datetime}")
                 st.json(response)
+                
+                # Show link to the podcast details
+                if "podcast_id" in response:
+                    podcast_id = response["podcast_id"]
+                    st.markdown(f"[View Podcast Details](/?page=Podcast%20Details&podcast_id={podcast_id})")
         else:
             # Generate the podcast immediately
             data = {
@@ -162,24 +167,16 @@ if page == "Generate Podcast":
                 st.success("Podcast generation started!")
                 st.json(response)
                 
-                # Show a spinner while waiting for the podcast
-                run_id = response.get("run_id")
-                if run_id:
-                    with st.spinner("Generating podcast... This may take several minutes."):
-                        # Poll for status updates
-                        status = "started"
-                        while status in ["started", "running"]:
-                            time.sleep(5)  # Check every 5 seconds
-                            status_response = call_api(f"/podcasts/runs/{run_id}")
-                            if status_response:
-                                status = status_response.get("status", "unknown")
-                                st.text(f"Current status: {status}")
-                        
-                        if status == "completed":
-                            st.success("Podcast generated successfully!")
-                            st.json(status_response)
-                        else:
-                            st.error(f"Podcast generation failed with status: {status}")
+                # Show link to the podcast details
+                if "podcast_id" in response:
+                    podcast_id = response["podcast_id"]
+                    st.markdown(f"[View Podcast Details](/?page=Podcast%20Details&podcast_id={podcast_id})")
+                    
+                    # Add a button to view the podcast details
+                    if st.button("View Podcast Details"):
+                        st.session_state.page = "Podcast Details"
+                        st.session_state.podcast_id = podcast_id
+                        st.experimental_rerun()
 
 # Scheduled Podcasts page
 elif page == "Scheduled Podcasts":
@@ -196,32 +193,58 @@ elif page == "Scheduled Podcasts":
     if st.button("Refresh List"):
         st.experimental_rerun()
     
-    # Get scheduled podcasts
-    endpoint = "/podcasts/scheduled"
+    # Get all podcasts with status "scheduled"
+    endpoint = "/podcasts?limit=50"
     if sport_filter != "All":
-        endpoint += f"?sport={sport_filter}"
+        endpoint += f"&sport={sport_filter}"
     
-    scheduled = call_api(endpoint)
+    all_podcasts = call_api(endpoint)
     
-    if scheduled:
-        if len(scheduled) == 0:
+    if all_podcasts:
+        # Filter to only scheduled podcasts
+        scheduled_podcasts = [p for p in all_podcasts if p.get("status") == "scheduled"]
+        
+        if len(scheduled_podcasts) == 0:
             st.info("No scheduled podcasts found.")
         else:
-            for run in scheduled:
-                with st.expander(f"{run['sport'].upper()} - {run['trigger']} - {run['schedule_time']}"):
-                    st.json(run)
-                    if st.button(f"Cancel", key=f"cancel_{run['id']}"):
-                        cancel_response = call_api(f"/podcasts/scheduled/{run['id']}", method="DELETE")
-                        if cancel_response:
-                            st.success("Scheduled podcast cancelled.")
-                            st.experimental_rerun()
+            for podcast in scheduled_podcasts:
+                # Format the podcast title
+                title = podcast.get("title", "Untitled Podcast")
+                sport = podcast.get("sport", "").upper()
+                created_at = datetime.fromisoformat(podcast.get("created_at", "")).strftime("%Y-%m-%d %H:%M")
+                
+                # Get the scheduled time from metadata
+                schedule_time = "Unknown"
+                if podcast.get("metadata") and podcast["metadata"].get("schedule_time"):
+                    schedule_time = datetime.fromisoformat(podcast["metadata"]["schedule_time"]).strftime("%Y-%m-%d %H:%M")
+                
+                with st.expander(f"{title} - Scheduled for {schedule_time}"):
+                    # Display podcast details
+                    st.write(f"**Sport:** {sport}")
+                    st.write(f"**Created:** {created_at}")
+                    
+                    # Display metadata in JSON format
+                    with st.expander("View Details"):
+                        st.json(podcast)
+                    
+                    # Link to full details
+                    st.markdown(f"[View Full Details](/?page=Podcast%20Details&podcast_id={podcast['id']})")
+                    
+                    # Cancel button
+                    if "metadata" in podcast and "schedule_id" in podcast["metadata"]:
+                        schedule_id = podcast["metadata"]["schedule_id"]
+                        if st.button(f"Cancel", key=f"cancel_{podcast['id']}"):
+                            cancel_response = call_api(f"/podcasts/scheduled/{schedule_id}", method="DELETE")
+                            if cancel_response:
+                                st.success("Scheduled podcast cancelled.")
+                                st.experimental_rerun()
 
 # Recent Podcasts page
 elif page == "Recent Podcasts":
     st.header("Recent Podcasts")
     
     # Filter options
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         sport_filter = st.selectbox(
             "Filter by Sport", 
@@ -229,99 +252,223 @@ elif page == "Recent Podcasts":
             index=0
         )
     with col2:
+        status_filter = st.selectbox(
+            "Filter by Status",
+            ["All", "generating", "completed", "failed"],
+            index=0
+        )
+    with col3:
         limit = st.slider("Number of podcasts to show", 5, 50, 10)
     
     # Refresh button
     if st.button("Refresh List"):
         st.experimental_rerun()
     
-    # Get recent podcasts
-    endpoint = f"/podcasts/runs?limit={limit}"
+    # Get recent podcasts from Supabase
+    endpoint = f"/podcasts?limit={limit}"
     if sport_filter != "All":
         endpoint += f"&sport={sport_filter}"
     
-    recent = call_api(endpoint)
+    recent_podcasts = call_api(endpoint)
     
-    if recent:
-        if len(recent) == 0:
-            st.info("No recent podcasts found.")
+    if recent_podcasts:
+        # Apply status filter if needed
+        if status_filter != "All":
+            recent_podcasts = [p for p in recent_podcasts if p.get("status") == status_filter]
+        
+        if len(recent_podcasts) == 0:
+            st.info("No podcasts found matching your filters.")
         else:
-            for run in recent:
-                status = run.get("status", "unknown")
-                if status == "completed":
-                    icon = "✅"
-                elif status == "failed":
-                    icon = "❌"
-                elif status == "running":
-                    icon = "⏳"
-                else:
-                    icon = "❓"
+            for podcast in recent_podcasts:
+                # Format the podcast title and status
+                title = podcast.get("title", "Untitled Podcast")
+                status = podcast.get("status", "unknown")
+                created_at = datetime.fromisoformat(podcast.get("created_at", "")).strftime("%Y-%m-%d %H:%M")
                 
-                with st.expander(f"{icon} {run['sport'].upper()} - {run.get('episode_type', 'unknown')} - {run['started_at']}"):
-                    st.json(run)
+                # Create a card for each podcast with status-based styling
+                status_color = {
+                    "completed": "green",
+                    "generating": "blue",
+                    "scheduled": "orange",
+                    "failed": "red"
+                }.get(status, "gray")
+                
+                st.markdown(f"""
+                <div style="padding: 10px; border-left: 5px solid {status_color}; margin-bottom: 10px;">
+                    <h3>{title}</h3>
+                    <p>Status: <span style="color: {status_color};">{status.upper()}</span> | Created: {created_at}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    # Show audio player if available
+                    if podcast.get("audio_url"):
+                        st.audio(podcast["audio_url"])
+                    elif status == "generating":
+                        st.info("Audio is being generated...")
+                    elif status == "failed":
+                        st.error("Audio generation failed.")
                     
-                    # If completed, show download links for audio files
-                    if status == "completed" and "result" in run and "audio_files" in run["result"]:
-                        st.subheader("Download Podcast")
-                        for audio_file in run["result"]["audio_files"]:
-                            st.download_button(
-                                f"Download {audio_file['format'].upper()}",
-                                data=b"Placeholder",  # In a real app, this would be the actual file
-                                file_name=audio_file["filename"],
-                                mime=f"audio/{audio_file['format']}"
-                            )
+                    # Show script snippet if available
+                    if podcast.get("script_text"):
+                        with st.expander("View Script Snippet"):
+                            # Show the first 500 characters of the script
+                            script_snippet = podcast["script_text"][:500] + "..." if len(podcast["script_text"]) > 500 else podcast["script_text"]
+                            st.markdown(script_snippet)
+                
+                with col2:
+                    # Button to view full details
+                    if st.button("View Details", key=f"view_{podcast['id']}"):
+                        st.session_state.page = "Podcast Details"
+                        st.session_state.podcast_id = podcast["id"]
+                        st.experimental_rerun()
+                
+                st.markdown("---")
+
+# Podcast Details page
+elif page == "Podcast Details":
+    st.header("Podcast Details")
+    
+    # Get podcast ID from URL parameter or session state
+    podcast_id = st.query_params.get("podcast_id", None)
+    if not podcast_id and "podcast_id" in st.session_state:
+        podcast_id = st.session_state.podcast_id
+    
+    if not podcast_id:
+        # No podcast ID provided, show a form to enter one
+        with st.form("podcast_id_form"):
+            podcast_id_input = st.text_input("Enter Podcast ID")
+            submit = st.form_submit_button("View Podcast")
+            
+            if submit and podcast_id_input:
+                podcast_id = podcast_id_input
+                st.session_state.podcast_id = podcast_id
+                st.experimental_rerun()
+    
+    if podcast_id:
+        # Get podcast details
+        podcast = call_api(f"/podcasts/{podcast_id}")
+        
+        if podcast:
+            # Display podcast info
+            title = podcast.get("title", "Untitled Podcast")
+            status = podcast.get("status", "unknown")
+            
+            # Show podcast title and status with color coding
+            status_color = {
+                "completed": "green",
+                "generating": "blue",
+                "scheduled": "orange",
+                "failed": "red"
+            }.get(status, "gray")
+            
+            st.markdown(f"# {title}")
+            st.markdown(f"<h3>Status: <span style='color: {status_color};'>{status.upper()}</span></h3>", unsafe_allow_html=True)
+            
+            # Show metadata
+            sport = podcast.get("sport", "").upper()
+            event_id = podcast.get("event_id", "N/A")
+            episode_type = podcast.get("episode_type", "N/A")
+            created_at = datetime.fromisoformat(podcast.get("created_at", "")).strftime("%Y-%m-%d %H:%M")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown(f"**Sport:** {sport}")
+                st.markdown(f"**Event:** {event_id}")
+            with col2:
+                st.markdown(f"**Episode Type:** {episode_type}")
+                st.markdown(f"**Created:** {created_at}")
+            with col3:
+                if podcast.get("duration"):
+                    duration_min = podcast["duration"] // 60
+                    duration_sec = podcast["duration"] % 60
+                    st.markdown(f"**Duration:** {duration_min}m {duration_sec}s")
+            
+            # Audio player if available
+            if podcast.get("audio_url"):
+                st.subheader("Listen")
+                st.audio(podcast["audio_url"])
+                
+                # Download button for audio
+                st.markdown(f"[Download Audio]({podcast['audio_url']})", unsafe_allow_html=True)
+            
+            # Script if available
+            if podcast.get("script_text"):
+                st.subheader("Podcast Script")
+                with st.expander("View Full Script", expanded=True):
+                    st.markdown(podcast["script_text"])
+                
+                # Download button for script
+                if podcast.get("script_url"):
+                    st.markdown(f"[Download Script]({podcast['script_url']})", unsafe_allow_html=True)
+            
+            # Get podcast generation logs
+            logs = call_api(f"/podcasts/{podcast_id}/logs")
+            
+            if logs:
+                st.subheader("Generation Logs")
+                with st.expander("View Generation Logs"):
+                    # Sort logs by timestamp
+                    logs.sort(key=lambda x: x.get("timestamp", ""), reverse=False)
                     
-                    # If completed, show download links for script files (new feature)
-                    if status == "completed" and "result" in run and "podcast" in run["result"] and "file_paths" in run["result"]["podcast"]:
-                        st.subheader("Download Script")
-                        file_paths = run["result"]["podcast"]["file_paths"]
+                    for log in logs:
+                        # Format the log entry with color based on level
+                        agent = log.get("agent_name", "system")
+                        message = log.get("message", "")
+                        timestamp = datetime.fromisoformat(log.get("timestamp", "")).strftime("%H:%M:%S")
+                        level = log.get("level", "info")
                         
-                        if "markdown" in file_paths:
-                            st.download_button(
-                                "Download Markdown Script",
-                                data=b"Placeholder",  # In a real app, this would be the actual file content
-                                file_name=os.path.basename(file_paths["markdown"]),
-                                mime="text/markdown"
-                            )
+                        level_color = {
+                            "info": "blue",
+                            "warning": "orange",
+                            "error": "red",
+                            "debug": "gray"
+                        }.get(level, "black")
                         
-                        if "pdf" in file_paths:
-                            st.download_button(
-                                "Download PDF Script",
-                                data=b"Placeholder",  # In a real app, this would be the actual file content
-                                file_name=os.path.basename(file_paths["pdf"]),
-                                mime="application/pdf"
-                            )
+                        st.markdown(f"<span style='color: gray;'>[{timestamp}]</span> <span style='color: purple;'>{agent}</span>: <span style='color: {level_color};'>{message}</span>", unsafe_allow_html=True)
+            
+            # Show raw data in expandable section
+            with st.expander("View Raw Data"):
+                st.json(podcast)
+            
+            # Refresh button
+            if st.button("Refresh"):
+                st.experimental_rerun()
+        else:
+            st.error(f"Podcast with ID {podcast_id} not found.")
 
 # About page
 elif page == "About":
     st.header("About DopCast")
     
     st.markdown("""
-        ## Overview
-        
-        DopCast is an innovative platform that uses AI agents to generate engaging podcasts about motorsport events.
-        Each agent has a specific role in the content creation pipeline, working together to deliver timely and insightful audio content for fans.
-        
-        ## How It Works
-        
-        1. **Research Agent** gathers information about races, qualifying, and news
-        2. **Content Planning Agent** structures the podcast episode
-        3. **Script Generation Agent** writes natural, engaging dialogue
-        4. **Voice Synthesis Agent** converts the script to realistic speech
-        5. **Audio Production Agent** adds music, effects, and professional polish
-        6. **Coordination Agent** orchestrates the entire process
-        
-        ## Features
-        
-        - Multi-agent system with specialized roles
-        - Automated research and data collection
-        - Natural-sounding voice synthesis
-        - Regular podcast episodes following race weekends
-        - Script exports in Markdown and PDF formats
-        - Expandable to additional motorsports
+    ## AI-Powered Motorsport Podcasts
+    
+    DopCast is a platform that uses multiple AI agents to generate engaging podcasts about motorsport events.
+    Each agent has a specific role in the content creation pipeline, working together to deliver timely and insightful audio content for fans.
+    
+    ### How It Works
+    
+    1. **Research Agent** gathers information about motorsport events
+    2. **Content Planning Agent** structures the podcast episode
+    3. **Script Generation Agent** creates natural, conversational scripts
+    4. **Voice Synthesis Agent** converts scripts to realistic speech
+    5. **Audio Production Agent** adds music, effects, and polish
+    
+    All of this is orchestrated by the **Coordination Agent**, which manages the workflow and ensures quality output.
+    
+    ### Technologies Used
+    
+    - Python for the backend
+    - Streamlit for this web interface
+    - FastAPI for the REST API
+    - OpenAI GPT models for content generation
+    - Supabase for database and storage
     """)
     
-    st.image("https://via.placeholder.com/800x400?text=DopCast+Architecture", caption="DopCast Architecture")
+    st.image("https://via.placeholder.com/800x200?text=DopCast", use_column_width=True)
 
 # Footer
 st.sidebar.markdown("---")

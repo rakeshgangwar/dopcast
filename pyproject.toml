@@ -26,4 +26,6 @@ dependencies = [
     "gtts>=2.5.4",
     "reportlab>=4.1.0", # Added for PDF script generation
     "markdown>=3.5.2", # Added for Markdown script generation
+    "supabase>=2.13.0",
+    "psycopg2-binary>=2.9.10",
 ]
