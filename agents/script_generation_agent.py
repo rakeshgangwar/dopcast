@@ -3,6 +3,18 @@ import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 import random
+import markdown
+import textwrap
+
+# For PDF generation
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+except ImportError:
+    # Add a note that reportlab needs to be installed for PDF generation
+    pass
 
 from agents.base_agent import BaseAgent
 
@@ -23,14 +35,14 @@ class ScriptGenerationAgent(BaseAgent):
         default_config = {
             "host_personalities": [
                 {
-                    "name": "Alex",
+                    "name": "Mukesh",
                     "role": "lead_host",
                     "style": "enthusiastic",
                     "expertise": "general",
                     "catchphrases": ["Absolutely incredible!", "Let's dive into this.", "What a moment that was!"]
                 },
                 {
-                    "name": "Sam",
+                    "name": "Rakesh",
                     "role": "technical_expert",
                     "style": "analytical",
                     "expertise": "technical",
@@ -40,7 +52,7 @@ class ScriptGenerationAgent(BaseAgent):
             "script_style": "conversational",
             "include_sound_effects": True,
             "include_transitions": True,
-            "humor_level": "moderate"  # none, light, moderate, heavy
+            "humor_level": "heavy"  # none, light, moderate, heavy
         }
         
         # Merge default config with provided config
@@ -57,6 +69,8 @@ class ScriptGenerationAgent(BaseAgent):
         # Initialize content storage
         self.content_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "content")
         os.makedirs(os.path.join(self.content_dir, "scripts"), exist_ok=True)
+        os.makedirs(os.path.join(self.content_dir, "scripts", "markdown"), exist_ok=True)
+        os.makedirs(os.path.join(self.content_dir, "scripts", "pdf"), exist_ok=True)
     
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -89,11 +103,164 @@ class ScriptGenerationAgent(BaseAgent):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         sport = content_outline.get("sport", "unknown")
         episode_type = content_outline.get("episode_type", "unknown")
-        filename = f"{sport}_{episode_type}_{timestamp}.json"
-        with open(os.path.join(self.content_dir, "scripts", filename), "w") as f:
+        basename = f"{sport}_{episode_type}_{timestamp}"
+        
+        # Save as JSON (original format)
+        json_filename = f"{basename}.json"
+        with open(os.path.join(self.content_dir, "scripts", json_filename), "w") as f:
             json.dump(script, f, indent=2)
         
+        # Generate and save Markdown version
+        md_content = self._generate_markdown(script)
+        md_filename = f"{basename}.md"
+        with open(os.path.join(self.content_dir, "scripts", "markdown", md_filename), "w") as f:
+            f.write(md_content)
+        
+        # Generate and save PDF version
+        pdf_path = os.path.join(self.content_dir, "scripts", "pdf", f"{basename}.pdf")
+        self._generate_pdf(script, pdf_path)
+        
+        # Add file paths to the result
+        script["file_paths"] = {
+            "json": os.path.join("scripts", json_filename),
+            "markdown": os.path.join("scripts", "markdown", md_filename),
+            "pdf": os.path.join("scripts", "pdf", f"{basename}.pdf")
+        }
+        
         return script
+    
+    def _generate_markdown(self, script: Dict[str, Any]) -> str:
+        """
+        Generate a markdown representation of the script.
+        
+        Args:
+            script: The complete podcast script
+            
+        Returns:
+            Markdown formatted string of the script
+        """
+        md = []
+        
+        # Add title and metadata
+        md.append(f"# {script['title']}\n")
+        md.append(f"*{script['description']}*\n")
+        md.append(f"**Hosts:** {', '.join(script['hosts'])}\n")
+        md.append(f"**Created:** {script['created_at']}\n")
+        md.append(f"**Duration:** {script['total_duration']} seconds\n")
+        md.append(f"**Word Count:** {script['word_count']} words\n\n")
+        
+        # Add each section
+        for section in script['sections']:
+            md.append(f"## {section['name'].replace('_', ' ').title()}\n")
+            
+            # Add dialogue
+            for line in section['dialogue']:
+                speaker = line['speaker']
+                text = line['text']
+                
+                # Format special lines differently
+                if speaker in ["INTRO", "OUTRO", "TRANSITION"]:
+                    md.append(f"*{text}*\n\n")
+                else:
+                    md.append(f"**{speaker}:** {text}\n\n")
+            
+            # Add sound effects as notes
+            if section['sound_effects']:
+                md.append("### Sound Effects\n")
+                for effect in section['sound_effects']:
+                    md.append(f"- *{effect['description']}* (at line {effect['position'] + 1})\n")
+                md.append("\n")
+        
+        return "".join(md)
+    
+    def _generate_pdf(self, script: Dict[str, Any], output_path: str) -> None:
+        """
+        Generate a PDF version of the script.
+        
+        Args:
+            script: The complete podcast script
+            output_path: Path to save the PDF file
+        """
+        try:
+            # Create PDF document
+            doc = SimpleDocTemplate(output_path, pagesize=letter)
+            styles = getSampleStyleSheet()
+            
+            # Create custom styles
+            title_style = ParagraphStyle(
+                'Title',
+                parent=styles['Title'],
+                spaceAfter=0.25*inch
+            )
+            
+            heading_style = ParagraphStyle(
+                'Heading',
+                parent=styles['Heading2'],
+                spaceAfter=0.15*inch,
+                spaceBefore=0.25*inch
+            )
+            
+            speaker_style = ParagraphStyle(
+                'Speaker',
+                parent=styles['Normal'],
+                fontName='Helvetica-Bold'
+            )
+            
+            normal_style = styles['Normal']
+            
+            note_style = ParagraphStyle(
+                'Note',
+                parent=styles['Italic'],
+                leftIndent=0.25*inch,
+                fontName='Helvetica-Oblique'
+            )
+            
+            # Build the document content
+            content = []
+            
+            # Add title and metadata
+            content.append(Paragraph(script['title'], title_style))
+            content.append(Paragraph(f"<i>{script['description']}</i>", normal_style))
+            content.append(Spacer(1, 0.1*inch))
+            content.append(Paragraph(f"<b>Hosts:</b> {', '.join(script['hosts'])}", normal_style))
+            content.append(Paragraph(f"<b>Created:</b> {script['created_at']}", normal_style))
+            content.append(Paragraph(f"<b>Duration:</b> {script['total_duration']} seconds", normal_style))
+            content.append(Paragraph(f"<b>Word Count:</b> {script['word_count']} words", normal_style))
+            content.append(Spacer(1, 0.2*inch))
+            
+            # Add each section
+            for section in script['sections']:
+                content.append(Paragraph(section['name'].replace('_', ' ').title(), heading_style))
+                
+                # Add dialogue
+                for line in section['dialogue']:
+                    speaker = line['speaker']
+                    text = line['text']
+                    
+                    # Format special lines differently
+                    if speaker in ["INTRO", "OUTRO", "TRANSITION"]:
+                        content.append(Paragraph(f"<i>{text}</i>", note_style))
+                    else:
+                        content.append(Paragraph(f"<b>{speaker}:</b> {text}", normal_style))
+                    content.append(Spacer(1, 0.05*inch))
+                
+                # Add sound effects as notes
+                if section['sound_effects']:
+                    content.append(Paragraph("Sound Effects:", speaker_style))
+                    for effect in section['sound_effects']:
+                        content.append(Paragraph(
+                            f"- <i>{effect['description']}</i> (at line {effect['position'] + 1})", 
+                            note_style
+                        ))
+                    content.append(Spacer(1, 0.1*inch))
+            
+            # Build the PDF
+            doc.build(content)
+            self.logger.info(f"Generated PDF script at {output_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate PDF: {str(e)}")
+            self.logger.info("PDF generation requires reportlab package. Install with: pip install reportlab")
     
     def _generate_script(self, content_outline: Dict[str, Any], 
                         script_style: str, humor_level: str) -> Dict[str, Any]:

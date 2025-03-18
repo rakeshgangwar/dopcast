@@ -24,4 +24,6 @@ dependencies = [
     "pyttsx3>=2.90",
     "pydub>=0.25.1",
     "gtts>=2.5.4",
+    "reportlab>=4.1.0", # Added for PDF script generation
+    "markdown>=3.5.2", # Added for Markdown script generation
 ]

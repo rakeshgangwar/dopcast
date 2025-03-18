@@ -8,7 +8,7 @@ DopCast is an innovative platform that uses AI agents to generate engaging podca
 
 - **Multi-agent System**: Specialized AI agents handle different aspects of podcast creation
 - **Automated Research**: Gather and analyze information from various sources
-- **Natural Dialogue**: Generate engaging, conversational scripts
+- **Natural Dialogue**: Generate engaging, conversational scripts (with PDF and Markdown exports)
 - **Voice Synthesis**: Convert scripts to realistic speech
 - **Audio Production**: Add music, effects, and professional polish
 - **Scheduling System**: Automate podcast creation based on race calendar
@@ -131,6 +131,7 @@ The Streamlit-based web interface allows for:
 - Easy podcast generation with custom parameters
 - Scheduling and managing podcast creation
 - Viewing and downloading generated podcasts
+- Downloading scripts in Markdown and PDF formats
 - System monitoring and configuration
 
 ## Extending DopCast
@@ -150,6 +151,13 @@ Edit the voice profiles in `config/voice_profiles.json` to create custom voices 
 ### Adding Sound Effects
 
 Place audio files in `content/audio/assets/` to make them available for the AudioProductionAgent.
+
+### Script Formats
+
+The system supports exporting podcast scripts in multiple formats:
+- **JSON**: Default format containing all script data
+- **Markdown**: Clean, readable format for easy sharing and editing
+- **PDF**: Professional format for printing or distribution
 
 ## License
 
