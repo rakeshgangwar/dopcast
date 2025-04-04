@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 async def test_enhanced_voice_synthesis_agent():
     """Test the enhanced voice synthesis agent."""
     logger.info("Testing Enhanced Voice Synthesis Agent")
-    
+
     # Create the agent
     agent = EnhancedVoiceSynthesisAgent()
-    
+
     # Create mock script
     script = {
         "title": "F1 Monaco Grand Prix Review",
@@ -100,7 +100,7 @@ async def test_enhanced_voice_synthesis_agent():
         "sport": "f1",
         "episode_type": "race_review"
     }
-    
+
     # Test input data
     input_data = {
         "script": script,
@@ -109,27 +109,29 @@ async def test_enhanced_voice_synthesis_agent():
             "use_ssml": False
         }
     }
-    
+
     # Process the request
     logger.info(f"Processing voice synthesis request for: {script['title']}")
     result = await agent.process(input_data)
-    
+
     # Save the result to a file for inspection
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = f"audio_test_result_{timestamp}.json"
-    
+    output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "output", "test_results")
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, f"audio_test_result_{timestamp}.json")
+
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
-    
+
     logger.info(f"Test result saved to {output_file}")
-    
+
     # Print a summary of the result
     logger.info("Result summary:")
     logger.info(f"Title: {result.get('title')}")
     logger.info(f"Main audio file: {result.get('main_file')}")
     logger.info(f"Total duration: {result.get('total_duration')} seconds")
     logger.info(f"Number of segments: {len(result.get('segment_files', []))}")
-    
+
     return result
 
 if __name__ == "__main__":

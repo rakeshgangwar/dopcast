@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 async def test_enhanced_audio_production_agent():
     """Test the enhanced audio production agent."""
     logger.info("Testing Enhanced Audio Production Agent")
-    
+
     # Create the agent
     agent = EnhancedAudioProductionAgent()
-    
+
     # Create mock audio metadata
     audio_metadata = {
         "title": "F1 Monaco Grand Prix Review",
@@ -50,7 +50,7 @@ async def test_enhanced_audio_production_agent():
         ],
         "total_duration": 75.0
     }
-    
+
     # Test input data
     input_data = {
         "audio_metadata": audio_metadata,
@@ -60,27 +60,29 @@ async def test_enhanced_audio_production_agent():
             "episode_number": 42
         }
     }
-    
+
     # Process the request
     logger.info(f"Processing audio production request for: {audio_metadata['title']}")
     result = await agent.process(input_data)
-    
+
     # Save the result to a file for inspection
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = f"production_test_result_{timestamp}.json"
-    
+    output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "output", "test_results")
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, f"production_test_result_{timestamp}.json")
+
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
-    
+
     logger.info(f"Test result saved to {output_file}")
-    
+
     # Print a summary of the result
     logger.info("Result summary:")
     logger.info(f"Title: {result.get('title')}")
     logger.info(f"Production ID: {result.get('production_id')}")
     logger.info(f"File: {result.get('file', {}).get('filename')}")
     logger.info(f"Duration: {result.get('duration')} seconds")
-    
+
     return result
 
 if __name__ == "__main__":

@@ -9,12 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
-# Application data directories
-content/
-data/
-logs/
-audio/
-production/
+# Output directories
+output/
 backup/
 
 # Environment files
@@ -25,8 +21,5 @@ backup/
 .idea/
 
 # Test output files
-test_result_*.json
-content_plan_test_result_*.json
-script_test_result_*.json
-audio_test_result_*.json
-production_test_result_*.json
+*.json
+!package.json

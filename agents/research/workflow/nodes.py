@@ -52,7 +52,8 @@ def initialize_research(state: ResearchState) -> Dict[str, Any]:
 
         # Set up data directories
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-        data_dir = os.path.join(base_dir, "data")
+        output_dir = os.path.join(base_dir, "output")
+        data_dir = os.path.join(output_dir, "data")
         cache_dir = os.path.join(data_dir, "cache")
         memory_dir = os.path.join(data_dir, "memory")
 
