@@ -161,9 +161,13 @@ class VoiceGeneratorTool:
 
                         # Verify the file was created
                         if success and os.path.exists(segment_path) and os.path.getsize(segment_path) > 0:
-                            self.logger.info(f"Successfully generated ElevenLabs audio for {speaker} at {segment_path}")
+                            self.logger.info(f"Successfully generated ElevenLabs audio for {speaker} at {segment_path} (size: {os.path.getsize(segment_path)} bytes)")
                         else:
                             self.logger.warning(f"ElevenLabs generation failed for {speaker}, falling back to gTTS")
+                            if os.path.exists(segment_path):
+                                self.logger.warning(f"File exists but size is {os.path.getsize(segment_path)} bytes")
+                            else:
+                                self.logger.warning(f"File does not exist: {segment_path}")
                             provider = "gtts"
                     except Exception as e:
                         self.logger.error(f"Error generating ElevenLabs audio: {e}, falling back to gTTS")
@@ -176,9 +180,28 @@ class VoiceGeneratorTool:
                 # Get language from voice profile
                 lang = voice_profile.get("voice_id", "en")
 
-                # Generate audio with gTTS
-                tts = gTTS(text, lang=lang, slow=False)
-                tts.save(segment_path)
+                # Make sure the directory exists
+                os.makedirs(os.path.dirname(segment_path), exist_ok=True)
+
+                try:
+                    # Generate audio with gTTS
+                    self.logger.info(f"Generating gTTS audio for text: '{text[:30]}...'")
+                    tts = gTTS(text, lang=lang, slow=False)
+                    tts.save(segment_path)
+
+                    # Verify the file was created
+                    if os.path.exists(segment_path) and os.path.getsize(segment_path) > 0:
+                        self.logger.info(f"Successfully generated gTTS audio at {segment_path} (size: {os.path.getsize(segment_path)} bytes)")
+                    else:
+                        self.logger.error(f"gTTS generation failed or produced empty file: {segment_path}")
+                        if os.path.exists(segment_path):
+                            self.logger.error(f"File exists but size is {os.path.getsize(segment_path)} bytes")
+                        else:
+                            self.logger.error(f"File does not exist: {segment_path}")
+                        return None
+                except Exception as e:
+                    self.logger.error(f"Error generating gTTS audio: {e}")
+                    return None
 
             # Estimate duration based on word count and speaking rate
             word_count = len(text.split())
@@ -215,16 +238,35 @@ class VoiceGeneratorTool:
         description = effect.get("description", "")
 
         # Generate filename for this effect
-        timestamp = asyncio.get_event_loop().time()
-        effect_filename = f"{section_name}_{effect_type}_{int(timestamp)}.{audio_format}"
+        timestamp = int(asyncio.get_event_loop().time())
+        effect_filename = f"{section_name}_{effect_type}_{timestamp}.{audio_format}"
         effect_path = os.path.join(self.audio_dir, "segments", effect_filename)
 
         # Create a simple sound effect file (just silence for now)
-        self.logger.info(f"Would add sound effect: {effect_type} - {description}")
+        self.logger.info(f"Generating sound effect: {effect_type} - {description}")
 
-        # Create an empty file for now
-        with open(effect_path, "w") as f:
-            f.write("")
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(effect_path), exist_ok=True)
+
+        try:
+            # Create a 1-second silent audio file using ffmpeg instead of an empty file
+            import subprocess
+            self.logger.info(f"Creating silent sound effect file: {effect_path}")
+            result = subprocess.run([
+                "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+                "-t", "1", "-q:a", "9", "-acodec", "libmp3lame", effect_path
+            ], check=False, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                self.logger.error(f"Failed to create sound effect file: {result.stderr}")
+                # Fallback to creating an empty file
+                with open(effect_path, "wb") as f:
+                    f.write(b"")
+        except Exception as e:
+            self.logger.error(f"Error creating sound effect file: {e}")
+            # Fallback to creating an empty file
+            with open(effect_path, "wb") as f:
+                f.write(b"")
 
         # Estimate duration for sound effect
         effect_duration = 3.0  # Default 3 seconds for sound effects

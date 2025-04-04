@@ -87,12 +87,17 @@ class AudioProcessorTool:
                     # Check which files actually exist
                     existing_files = []
                     for audio_file in all_audio_files:
-                        if os.path.exists(audio_file) and os.path.getsize(audio_file) > 0:
-                            # Use absolute path to avoid issues
-                            abs_path = os.path.abspath(audio_file)
-                            existing_files.append(abs_path)
+                        if os.path.exists(audio_file):
+                            file_size = os.path.getsize(audio_file)
+                            self.logger.info(f"Found audio file: {audio_file}, size: {file_size} bytes")
+                            if file_size > 0:
+                                # Use absolute path to avoid issues
+                                abs_path = os.path.abspath(audio_file)
+                                existing_files.append(abs_path)
+                            else:
+                                self.logger.warning(f"Audio file is empty (0 bytes): {audio_file}")
                         else:
-                            self.logger.warning(f"Audio file not found or empty: {audio_file}")
+                            self.logger.warning(f"Audio file not found: {audio_file}")
 
                     # If no files exist, create a dummy file
                     if not existing_files:
@@ -101,12 +106,19 @@ class AudioProcessorTool:
                         dummy_path = os.path.join(self.audio_dir, f"dummy_{timestamp}.mp3")
                         try:
                             # Create a 1-second silent MP3 using ffmpeg
-                            subprocess.run([
+                            self.logger.info(f"Creating dummy silent audio file: {dummy_path}")
+                            result = subprocess.run([
                                 "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
                                 "-t", "1", "-q:a", "9", "-acodec", "libmp3lame", dummy_path
-                            ], check=True, capture_output=True)
-                            existing_files.append(dummy_path)
-                            self.logger.info(f"Created dummy silent audio file: {dummy_path}")
+                            ], check=False, capture_output=True, text=True)
+
+                            if result.returncode == 0 and os.path.exists(dummy_path) and os.path.getsize(dummy_path) > 0:
+                                existing_files.append(dummy_path)
+                                self.logger.info(f"Created dummy silent audio file: {dummy_path}")
+                            else:
+                                self.logger.error(f"Failed to create dummy audio file. Return code: {result.returncode}")
+                                self.logger.error(f"STDOUT: {result.stdout}")
+                                self.logger.error(f"STDERR: {result.stderr}")
                         except Exception as e:
                             self.logger.error(f"Failed to create dummy audio file: {e}")
 
@@ -127,10 +139,32 @@ class AudioProcessorTool:
                     ]
 
                     self.logger.info(f"Running ffmpeg command: {' '.join(cmd)}")
-                    subprocess.run(cmd, check=True)
+                    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+
+                    if result.returncode == 0:
+                        self.logger.info(f"FFmpeg command succeeded. Output file: {episode_path}")
+                        # Verify the output file exists and has content
+                        if os.path.exists(episode_path) and os.path.getsize(episode_path) > 0:
+                            self.logger.info(f"Output file created successfully: {episode_path}, size: {os.path.getsize(episode_path)} bytes")
+                        else:
+                            self.logger.error(f"Output file missing or empty: {episode_path}")
+                            if os.path.exists(episode_path):
+                                self.logger.error(f"File exists but size is {os.path.getsize(episode_path)} bytes")
+                            else:
+                                self.logger.error("File does not exist")
+                    else:
+                        self.logger.error(f"FFmpeg command failed with return code: {result.returncode}")
+                        self.logger.error(f"STDOUT: {result.stdout}")
+                        self.logger.error(f"STDERR: {result.stderr}")
+                        # Fallback to using the first file if it exists and has content
+                        if existing_files and os.path.exists(existing_files[0]) and os.path.getsize(existing_files[0]) > 0:
+                            shutil.copy(existing_files[0], episode_path)
+                            self.logger.info(f"Fallback: Copied first audio file to {episode_path}")
 
                     # Clean up the temporary file
-                    os.remove(file_list_path)
+                    if os.path.exists(file_list_path):
+                        os.remove(file_list_path)
+                        self.logger.info(f"Removed temporary file list: {file_list_path}")
 
                     self.logger.info(f"Successfully combined {len(all_audio_files)} audio files to {episode_path}")
                 except Exception as e:

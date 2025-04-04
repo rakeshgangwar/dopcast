@@ -243,16 +243,31 @@ async def generate_section_audio(state: SynthesisState) -> Dict[str, Any]:
 
                 # Generate audio for this line - one at a time
                 logger.info(f"Generating audio for line: {text[:30]}... (speaker: {speaker})")
-                audio_info = await voice_generator.generate_audio_for_line(
-                    line, adjusted_profile, emotion, audio_format, use_ssml
-                )
+                try:
+                    audio_info = await voice_generator.generate_audio_for_line(
+                        line, adjusted_profile, emotion, audio_format, use_ssml
+                    )
 
-                if audio_info:
-                    segment_files.append(audio_info)
+                    if audio_info:
+                        # Verify the audio file exists and has content
+                        audio_path = audio_info.get("path", "")
+                        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+                            logger.info(f"Successfully generated audio for line: {text[:30]}... (size: {os.path.getsize(audio_path)} bytes)")
+                            segment_files.append(audio_info)
+                        else:
+                            logger.error(f"Audio file missing or empty: {audio_path}")
+                            if os.path.exists(audio_path):
+                                logger.error(f"File exists but size is {os.path.getsize(audio_path)} bytes")
+                            else:
+                                logger.error(f"File does not exist: {audio_path}")
+                    else:
+                        logger.warning(f"Failed to generate audio for line: {text[:30]}...")
+
                     # Add a small delay between API calls to avoid rate limiting
-                    await asyncio.sleep(1)
-                else:
-                    logger.warning(f"Failed to generate audio for line: {text[:30]}...")
+                    await asyncio.sleep(2)  # Increased delay to avoid rate limiting
+                except Exception as e:
+                    logger.error(f"Error generating audio for line: {text[:30]}... - {str(e)}")
+                    await asyncio.sleep(2)  # Still add delay even on error
 
             # Process sound effects sequentially
             for effect in section.get("sound_effects", []):
@@ -309,15 +324,48 @@ def combine_audio(state: SynthesisState) -> Dict[str, Any]:
 
         # Generate intro audio asynchronously - but as a separate step
         logger.info("Generating intro audio as a separate step")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        intro_audio = loop.run_until_complete(
-            voice_generator.generate_intro_audio(title, description, hosts, audio_format)
-        )
-        loop.close()
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            intro_audio = loop.run_until_complete(
+                voice_generator.generate_intro_audio(title, description, hosts, audio_format)
+            )
+            loop.close()
+
+            # Verify the intro audio file exists and has content
+            intro_path = intro_audio.get("path", "")
+            if os.path.exists(intro_path) and os.path.getsize(intro_path) > 0:
+                logger.info(f"Successfully generated intro audio: {intro_path} (size: {os.path.getsize(intro_path)} bytes)")
+            else:
+                logger.error(f"Intro audio file missing or empty: {intro_path}")
+                if os.path.exists(intro_path):
+                    logger.error(f"File exists but size is {os.path.getsize(intro_path)} bytes")
+                else:
+                    logger.error(f"File does not exist: {intro_path}")
+        except Exception as e:
+            logger.error(f"Error generating intro audio: {str(e)}")
+            # Create a dummy intro audio object
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            output_dir = os.path.join(base_dir, "output")
+            audio_dir_path = os.path.join(output_dir, "audio")
+            os.makedirs(audio_dir_path, exist_ok=True)
+
+            dummy_filename = f"intro_error_{int(time.time())}.mp3"
+            dummy_path = os.path.join(audio_dir_path, dummy_filename)
+
+            # Create an empty file
+            with open(dummy_path, "wb") as f:
+                f.write(b"")
+
+            intro_audio = {
+                "filename": dummy_filename,
+                "type": "intro",
+                "duration": 0,
+                "path": dummy_path
+            }
 
         # Add a delay after intro generation to avoid rate limiting
-        time.sleep(2)
+        time.sleep(3)  # Increased delay to avoid rate limiting
 
         # Combine all audio segments
         audio_metadata = audio_processor.combine_audio_segments(

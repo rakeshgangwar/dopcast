@@ -166,6 +166,11 @@ class ElevenLabsWrapper:
             self.logger.error("No voice ID provided for validation")
             return False
 
+        # Check if it's one of our predefined voice IDs
+        if voice_id in ["pNInz6obpgDQGcFmaJgB", "JBFqnCBsd6RMkjVDRZzb", "21m00Tcm4TlvDq8ikWAM"]:
+            self.logger.info(f"Voice ID {voice_id} is a known valid voice ID")
+            return True
+
         try:
             # Try to get voice details using the API
             url = f"https://api.elevenlabs.io/v1/voices/{voice_id}"
@@ -342,6 +347,14 @@ class ElevenLabsWrapper:
                                 return True
                             else:
                                 self.logger.error(f"Failed to save audio to {output_path} or file is empty{retry_msg}")
+                                if os.path.exists(output_path):
+                                    self.logger.error(f"File exists but size is {os.path.getsize(output_path)} bytes")
+                                else:
+                                    self.logger.error(f"File does not exist: {output_path}")
+
+                                # Try to create the directory again
+                                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
                                 if retry < max_retries:
                                     self.logger.info(f"Retrying in {(retry+1)*2} seconds...")
                                     time.sleep((retry+1) * 2)  # Exponential backoff
