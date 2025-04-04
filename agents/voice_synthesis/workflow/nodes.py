@@ -6,7 +6,7 @@ Each function represents a node in the voice synthesis workflow graph.
 import logging
 import os
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 
 from ..tools.voice_generator import VoiceGeneratorTool
@@ -53,8 +53,26 @@ def initialize_synthesis(state: SynthesisState) -> Dict[str, Any]:
         # Ensure directories exist
         os.makedirs(audio_dir, exist_ok=True)
 
-        # Initialize tools
-        voice_generator = VoiceGeneratorTool(audio_dir)
+        # Extract configuration parameters
+        custom_parameters = input_data.get("custom_parameters", {})
+
+        # Get provider configuration
+        provider = custom_parameters.get("provider", os.environ.get("DEFAULT_VOICE_PROVIDER", "gtts"))
+        elevenlabs_api_key = custom_parameters.get("elevenlabs_api_key", os.environ.get("ELEVENLABS_API_KEY", ""))
+        elevenlabs_model = custom_parameters.get("elevenlabs_model", "eleven_multilingual_v2")
+        debug_mode = custom_parameters.get("debug", False)
+
+        # Initialize tools with provider configuration
+        voice_generator = VoiceGeneratorTool(
+            audio_dir,
+            config={
+                "provider": provider,
+                "elevenlabs_api_key": elevenlabs_api_key,
+                "elevenlabs_model": elevenlabs_model,
+                "default_intro_voice_id": custom_parameters.get("default_intro_voice_id", "21m00Tcm4TlvDq8ikWAM"),
+                "debug": debug_mode
+            }
+        )
         audio_processor = AudioProcessorTool(audio_dir)
         emotion_detector = EmotionDetectorTool()
 
@@ -62,13 +80,13 @@ def initialize_synthesis(state: SynthesisState) -> Dict[str, Any]:
         voice_memory = VoiceMemory(audio_dir)
         audio_memory = AudioMemory(audio_dir)
 
-        # Extract configuration parameters
-        custom_parameters = input_data.get("custom_parameters", {})
+        # Set up workflow configuration
 
         # Set up configuration for the workflow
         config = {
             "audio_format": custom_parameters.get("audio_format", "mp3"),
             "use_ssml": custom_parameters.get("use_ssml", False),
+            "provider": provider,
             "emotion_mapping": {
                 "excited": {"speaking_rate": 0.2, "pitch": 1.0},
                 "happy": {"speaking_rate": 0.1, "pitch": 0.5},

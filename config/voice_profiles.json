@@ -5,7 +5,10 @@
     "accent": "american",
     "style": "enthusiastic",
     "pitch": 1.0,
-    "rate": 1.0
+    "rate": 1.0,
+    "voice_id": "en",
+    "speaking_rate": 1.0,
+    "provider": "gtts"
   },
   "host_female_1": {
     "name": "Maria",
@@ -13,7 +16,10 @@
     "accent": "british",
     "style": "professional",
     "pitch": 1.0,
-    "rate": 1.0
+    "rate": 1.0,
+    "voice_id": "en-GB",
+    "speaking_rate": 1.0,
+    "provider": "gtts"
   },
   "host_male_2": {
     "name": "James",
@@ -21,7 +27,10 @@
     "accent": "british",
     "style": "analytical",
     "pitch": 0.95,
-    "rate": 0.98
+    "rate": 0.98,
+    "voice_id": "en-GB",
+    "speaking_rate": 0.98,
+    "provider": "gtts"
   },
   "host_female_2": {
     "name": "Sophia",
@@ -29,6 +38,61 @@
     "accent": "american",
     "style": "conversational",
     "pitch": 1.05,
-    "rate": 1.02
+    "rate": 1.02,
+    "voice_id": "en",
+    "speaking_rate": 1.02,
+    "provider": "gtts"
+  },
+  "elevenlabs_male_1": {
+    "name": "Adam",
+    "gender": "male",
+    "accent": "american",
+    "style": "professional",
+    "pitch": 1.0,
+    "rate": 1.0,
+    "speaking_rate": 1.0,
+    "provider": "elevenlabs",
+    "voice_id": "pNInz6obpgDQGcFmaJgB",
+    "stability": 0.5,
+    "similarity_boost": 0.75
+  },
+  "elevenlabs_female_1": {
+    "name": "Rachel",
+    "gender": "female",
+    "accent": "american",
+    "style": "conversational",
+    "pitch": 1.0,
+    "rate": 1.0,
+    "speaking_rate": 1.0,
+    "provider": "elevenlabs",
+    "voice_id": "21m00Tcm4TlvDq8ikWAM",
+    "stability": 0.5,
+    "similarity_boost": 0.75
+  },
+  "elevenlabs_male_2": {
+    "name": "Sam",
+    "gender": "male",
+    "accent": "british",
+    "style": "analytical",
+    "pitch": 0.95,
+    "rate": 0.98,
+    "speaking_rate": 0.98,
+    "provider": "elevenlabs",
+    "voice_id": "yoZ06aMxZJJ28mfd3POQ",
+    "stability": 0.6,
+    "similarity_boost": 0.7
+  },
+  "elevenlabs_female_2": {
+    "name": "Emily",
+    "gender": "female",
+    "accent": "british",
+    "style": "professional",
+    "pitch": 1.05,
+    "rate": 1.02,
+    "speaking_rate": 1.02,
+    "provider": "elevenlabs",
+    "voice_id": "EXAVITQu4vr4xnSDxMaL",
+    "stability": 0.5,
+    "similarity_boost": 0.8
   }
 }

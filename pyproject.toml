@@ -32,4 +32,6 @@ dependencies = [
     "youtube-transcript-api>=1.0.3", # Added for YouTube transcript extraction
     "yt-dlp>=2025.3.31",
     "langchain-google-genai>=2.1.2",
+    "langchain-community>=0.3.20",
+    "elevenlabs>=1.56.0", # Added for ElevenLabs voice synthesis
 ]

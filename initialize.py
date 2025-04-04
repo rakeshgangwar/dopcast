@@ -39,7 +39,7 @@ def create_directory_structure():
         "config/sports",
         "tests"
     ]
-    
+
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
         logger.info(f"Created directory: {directory}")
@@ -60,7 +60,7 @@ def create_env_file():
     if os.path.exists(".env"):
         logger.info(".env file already exists, skipping")
         return
-    
+
     env_content = """\
 # DopCast Environment Variables
 
@@ -83,19 +83,23 @@ REDIS_DB=0
 #OPENAI_API_KEY=your_api_key_here
 OPENAI_MODEL=gpt-4
 
+# ElevenLabs API Settings
+#ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+
 # Audio Settings
 DEFAULT_AUDIO_FORMAT=mp3
 DEFAULT_SAMPLE_RATE=44100
 DEFAULT_BITRATE=192k
+DEFAULT_VOICE_PROVIDER=gtts  # Options: gtts, elevenlabs
 
 # Research Settings
 RESEARCH_SOURCES=official,news,social
 MAX_RESEARCH_DEPTH=3
 """
-    
+
     with open(".env", "w") as f:
         f.write(env_content)
-    
+
     logger.info("Created template .env file")
 
 def download_audio_assets():
@@ -106,7 +110,7 @@ def download_audio_assets():
     """
     assets_dir = "content/audio/assets"
     os.makedirs(assets_dir, exist_ok=True)
-    
+
     # Create placeholder files for demo purposes
     assets = [
         "intro_music.mp3",
@@ -116,7 +120,7 @@ def download_audio_assets():
         "applause.mp3",
         "race_sounds.mp3"
     ]
-    
+
     for asset in assets:
         asset_path = os.path.join(assets_dir, asset)
         if not os.path.exists(asset_path):
@@ -146,7 +150,7 @@ def check_dependencies():
         import pydub
         import streamlit
         import pytest
-        
+
         logger.info("All required dependencies are installed")
         return True
     except ImportError as e:
@@ -157,7 +161,7 @@ def check_dependencies():
 def initialize_system(force=False):
     """
     Initialize the DopCast system.
-    
+
     Args:
         force: Force reinitialization even if the system is already initialized
     """
@@ -165,36 +169,36 @@ def initialize_system(force=False):
     if os.path.exists(".initialized") and not force:
         logger.info("DopCast system is already initialized. Use --force to reinitialize.")
         return
-    
+
     logger.info("Initializing DopCast system...")
-    
+
     # Create directory structure
     create_directory_structure()
-    
+
     # Create default configurations
     create_default_configs()
-    
+
     # Create .env file template
     create_env_file()
-    
+
     # Download audio assets
     download_audio_assets()
-    
+
     # Check dependencies
     if not check_dependencies():
         logger.warning("Some dependencies are missing. System may not function correctly.")
-    
+
     # Mark as initialized
     with open(".initialized", "w") as f:
         f.write(datetime.now().isoformat())
-    
+
     logger.info("DopCast system initialized successfully")
 
 def main():
     parser = argparse.ArgumentParser(description="Initialize the DopCast system")
     parser.add_argument("--force", action="store_true", help="Force reinitialization")
     args = parser.parse_args()
-    
+
     initialize_system(args.force)
 
 if __name__ == "__main__":
