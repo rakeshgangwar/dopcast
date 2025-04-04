@@ -29,4 +29,6 @@ dependencies = [
     "langgraph>=0.3.25",
     "fastf1>=3.5.3",
     "aiohttp>=3.11.16",
+    "youtube-transcript-api>=1.0.3", # Added for YouTube transcript extraction
+    "yt-dlp>=2025.3.31",
 ]

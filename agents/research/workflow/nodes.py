@@ -11,6 +11,7 @@ from datetime import datetime
 from ..tools.web_scraper import WebScraperTool
 from ..tools.data_processor import DataProcessorTool
 from ..tools.entity_extractor import EntityExtractorTool
+from ..tools.youtube_transcript_tool import YouTubeTranscriptTool
 from ..memory.cache_memory import CacheMemory
 from ..memory.entity_memory import EntityMemory
 from ..memory.research_memory import ResearchMemory
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 web_scraper = None
 data_processor = None
 entity_extractor = None
+youtube_transcript_tool = None
 cache_memory = None
 entity_memory = None
 research_memory = None
@@ -39,7 +41,7 @@ def initialize_research(state: ResearchState) -> Dict[str, Any]:
     Returns:
         Updated state
     """
-    global web_scraper, data_processor, entity_extractor, cache_memory, entity_memory, research_memory
+    global web_scraper, data_processor, entity_extractor, youtube_transcript_tool, cache_memory, entity_memory, research_memory
 
     logger.info("Initializing research workflow")
 
@@ -66,6 +68,7 @@ def initialize_research(state: ResearchState) -> Dict[str, Any]:
         web_scraper = WebScraperTool(data_dir)
         data_processor = DataProcessorTool(data_dir)
         entity_extractor = EntityExtractorTool()
+        youtube_transcript_tool = YouTubeTranscriptTool(data_dir)
 
         # Initialize memory components
         cache_memory = CacheMemory(cache_dir)
@@ -154,6 +157,79 @@ def collect_data(state: ResearchState) -> Dict[str, Any]:
         logger.error(f"Error collecting data: {e}", exc_info=True)
         return {"error_info": f"Data collection failed: {str(e)}"}
 
+def collect_youtube_transcripts(state: ResearchState) -> Dict[str, Any]:
+    """
+    Collect YouTube video transcripts related to the research topic.
+
+    Args:
+        state: Current state
+
+    Returns:
+        Updated state with YouTube transcript data
+    """
+    logger.info("Collecting YouTube transcripts")
+
+    try:
+        config = state.get("config", {})
+        sport = config.get("sport", "f1")
+        event_type = config.get("event_type", "latest")
+        event_id = config.get("event_id")
+
+        # Create search query based on sport and event
+        search_query = f"{sport} {event_type}"
+        if event_id:
+            search_query += f" {event_id}"
+
+        # Add additional context for better search results
+        if event_type == "race":
+            search_query += " highlights interview podcast"
+        elif event_type == "qualifying":
+            search_query += " qualifying highlights analysis"
+        elif event_type == "practice":
+            search_query += " practice session analysis"
+        else:
+            search_query += " latest news analysis"
+
+        logger.info(f"YouTube search query: {search_query}")
+
+        # Check if this is a mock/test environment
+        is_mock = config.get("tried_fallback", False)
+
+        # Make sure the YouTube transcript tool is initialized
+        if youtube_transcript_tool is None:
+            logger.warning("YouTube transcript tool not initialized, initializing now")
+            # Get the data directory from the config
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            output_dir = os.path.join(base_dir, "output")
+            data_dir = os.path.join(output_dir, "data")
+            os.makedirs(data_dir, exist_ok=True)
+
+            from ..tools.youtube_transcript_tool import YouTubeTranscriptTool
+            youtube_transcript_tool = YouTubeTranscriptTool(data_dir)
+
+        if is_mock:
+            # Use mock data for testing
+            youtube_data = youtube_transcript_tool.get_mock_transcripts(sport, event_type)
+            logger.info(f"Using mock YouTube transcript data")
+        else:
+            # Get real YouTube transcripts
+            youtube_data = youtube_transcript_tool.search_and_get_transcripts(search_query, sport)
+            logger.info(f"Found {len(youtube_data)} YouTube videos with transcripts")
+
+        # Add to state
+        return {
+            "youtube_data": youtube_data,
+            "config": config
+        }
+
+    except Exception as e:
+        logger.error(f"Error collecting YouTube transcripts: {e}", exc_info=True)
+        # Don't fail the whole workflow if YouTube collection fails
+        return {
+            "youtube_data": [],
+            "config": state.get("config", {})
+        }
+
 def process_data(state: ResearchState) -> Dict[str, Any]:
     """
     Process collected data.
@@ -168,12 +244,44 @@ def process_data(state: ResearchState) -> Dict[str, Any]:
 
     try:
         collected_data = state.get("collected_data", [])
+        youtube_data = state.get("youtube_data", [])
         config = state.get("config", {})
         sport = config.get("sport", "f1")
         event_type = config.get("event_type", "latest")
 
-        # Process the data
+        # Process the web data
         processed_data = data_processor.process_data(collected_data, sport, event_type)
+
+        # Add YouTube data to processed data
+        if youtube_data:
+            logger.info(f"Adding {len(youtube_data)} YouTube videos to processed data")
+
+            # Create a YouTube section in the processed data
+            if "sections" not in processed_data:
+                processed_data["sections"] = []
+
+            youtube_section = {
+                "title": "YouTube Content",
+                "source": "YouTube",
+                "content_type": "video_transcripts",
+                "items": []
+            }
+
+            # Process each YouTube video
+            for video in youtube_data:
+                # Extract key information
+                video_item = {
+                    "title": video.get("title", "Untitled Video"),
+                    "url": video.get("url", ""),
+                    "channel": video.get("channel", "Unknown Channel"),
+                    "transcript": video.get("transcript", ""),
+                    "published_at": video.get("published_at", ""),
+                    "video_id": video.get("video_id", "")
+                }
+                youtube_section["items"].append(video_item)
+
+            # Add the YouTube section to processed data
+            processed_data["sections"].append(youtube_section)
 
         return {"processed_data": processed_data}
 

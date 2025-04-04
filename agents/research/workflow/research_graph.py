@@ -11,6 +11,7 @@ from .state import ResearchState
 from .nodes import (
     initialize_research,
     collect_data,
+    collect_youtube_transcripts,
     process_data,
     extract_entities,
     analyze_trends,
@@ -60,6 +61,7 @@ def create_research_graph() -> StateGraph:
     graph_builder.add_node("initialize_research", initialize_research)
     graph_builder.add_node("collect_data", collect_data)
     graph_builder.add_node("collect_data_fallback", collect_data)  # Same function, different context
+    graph_builder.add_node("collect_youtube_transcripts", collect_youtube_transcripts)
     graph_builder.add_node("process_data", process_data)
     graph_builder.add_node("extract_entities", extract_entities)
     graph_builder.add_node("analyze_trends", analyze_trends)
@@ -79,7 +81,7 @@ def create_research_graph() -> StateGraph:
         should_retry_collection,
         {
             "collect_data_fallback": "collect_data_fallback",
-            "process_data": "process_data",
+            "process_data": "collect_youtube_transcripts",
             "generate_report": "generate_report"
         }
     )
@@ -89,10 +91,13 @@ def create_research_graph() -> StateGraph:
         "collect_data_fallback",
         should_retry_collection,
         {
-            "process_data": "process_data",
+            "process_data": "collect_youtube_transcripts",
             "generate_report": "generate_report"
         }
     )
+
+    # Add edge from YouTube transcript collection to data processing
+    graph_builder.add_edge("collect_youtube_transcripts", "process_data")
 
     # Standard flow for the rest of the graph
     graph_builder.add_edge("process_data", "extract_entities")
