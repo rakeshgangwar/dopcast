@@ -209,7 +209,7 @@ def master_audio(state: ProductionState) -> Dict[str, Any]:
 
         # Master the audio
         mastering_settings = {
-            "limiter_threshold": -1.0,
+            "limiter_threshold": 0.95,  # Changed from -1.0 to 0.95 to be within valid range [0.0625 - 1]
             "limiter_release": 100.0
         }
         mastered_audio = audio_enhancer.master_audio(mixed_audio, mastering_settings)

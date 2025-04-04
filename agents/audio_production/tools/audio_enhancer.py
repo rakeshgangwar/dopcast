@@ -131,7 +131,7 @@ class AudioEnhancerTool:
         try:
             # Apply mastering using FFmpeg
             # This includes compression, limiting, and final EQ
-            limiter_threshold = mastering_settings.get("limiter_threshold", -1.0)
+            limiter_threshold = mastering_settings.get("limiter_threshold", 0.95)  # Changed from -1.0 to 0.95 to be within valid range [0.0625 - 1]
             limiter_release = mastering_settings.get("limiter_release", 100.0)
 
             # Build the audio filter chain

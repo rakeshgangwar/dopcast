@@ -6,6 +6,7 @@ Each function represents a node in the voice synthesis workflow graph.
 import logging
 import os
 import asyncio
+import time
 from typing import Dict, Any
 from datetime import datetime
 
@@ -214,6 +215,7 @@ async def generate_section_audio(state: SynthesisState) -> Dict[str, Any]:
         # Generate audio for each section
         section_audio = []
 
+        # Process sections sequentially
         for section in script.get("sections", []):
             section_name = section.get("name", "unnamed_section")
             logger.info(f"Generating audio for section: {section_name}")
@@ -221,6 +223,7 @@ async def generate_section_audio(state: SynthesisState) -> Dict[str, Any]:
             # Generate audio for each dialogue line
             segment_files = []
 
+            # Process dialogue lines sequentially
             for line in section.get("dialogue", []):
                 speaker = line.get("speaker")
                 text = line.get("text", "")
@@ -238,16 +241,22 @@ async def generate_section_audio(state: SynthesisState) -> Dict[str, Any]:
                 # Adjust voice profile based on emotion
                 adjusted_profile = audio_processor.adjust_audio_parameters(voice_profile, emotion)
 
-                # Generate audio for this line
+                # Generate audio for this line - one at a time
+                logger.info(f"Generating audio for line: {text[:30]}... (speaker: {speaker})")
                 audio_info = await voice_generator.generate_audio_for_line(
                     line, adjusted_profile, emotion, audio_format, use_ssml
                 )
 
                 if audio_info:
                     segment_files.append(audio_info)
+                    # Add a small delay between API calls to avoid rate limiting
+                    await asyncio.sleep(1)
+                else:
+                    logger.warning(f"Failed to generate audio for line: {text[:30]}...")
 
-            # Generate audio for sound effects
+            # Process sound effects sequentially
             for effect in section.get("sound_effects", []):
+                logger.info(f"Generating sound effect: {effect.get('type', 'unknown')}")
                 effect_info = await voice_generator.generate_sound_effect(
                     effect, section_name, audio_format
                 )
@@ -261,6 +270,9 @@ async def generate_section_audio(state: SynthesisState) -> Dict[str, Any]:
                 "segment_files": segment_files,
                 "duration": sum(segment.get("duration", 0) for segment in segment_files)
             })
+
+            # Log progress after each section
+            logger.info(f"Completed audio generation for section: {section_name} with {len(segment_files)} segments")
 
         logger.info(f"Generated audio for {len(section_audio)} sections")
 
@@ -295,13 +307,17 @@ def combine_audio(state: SynthesisState) -> Dict[str, Any]:
         description = script.get("description", "")
         hosts = script.get("hosts", [])
 
-        # Generate intro audio asynchronously
+        # Generate intro audio asynchronously - but as a separate step
+        logger.info("Generating intro audio as a separate step")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         intro_audio = loop.run_until_complete(
             voice_generator.generate_intro_audio(title, description, hosts, audio_format)
         )
         loop.close()
+
+        # Add a delay after intro generation to avoid rate limiting
+        time.sleep(2)
 
         # Combine all audio segments
         audio_metadata = audio_processor.combine_audio_segments(

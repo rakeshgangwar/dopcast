@@ -57,10 +57,15 @@ def create_research_graph() -> StateGraph:
     # Initialize the StateGraph builder
     graph_builder = StateGraph(ResearchState)
 
+    # Define a wrapper for collect_data_fallback to set the current node
+    def collect_data_fallback(state):
+        state["current_node"] = "collect_data_fallback"
+        return collect_data(state)
+
     # Add nodes to the graph
     graph_builder.add_node("initialize_research", initialize_research)
     graph_builder.add_node("collect_data", collect_data)
-    graph_builder.add_node("collect_data_fallback", collect_data)  # Same function, different context
+    graph_builder.add_node("collect_data_fallback", collect_data_fallback)  # Wrapper function
     graph_builder.add_node("collect_youtube_transcripts", collect_youtube_transcripts)
     graph_builder.add_node("process_data", process_data)
     graph_builder.add_node("extract_entities", extract_entities)
@@ -92,7 +97,8 @@ def create_research_graph() -> StateGraph:
         should_retry_collection,
         {
             "process_data": "collect_youtube_transcripts",
-            "generate_report": "generate_report"
+            "generate_report": "generate_report",
+            "collect_data_fallback": "collect_data_fallback"  # Add this to handle recursive fallback
         }
     )
 

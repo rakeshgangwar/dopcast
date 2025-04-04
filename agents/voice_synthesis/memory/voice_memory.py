@@ -59,47 +59,102 @@ class VoiceMemory:
             self.logger.error(f"Error saving voice index: {e}")
 
     def _initialize_default_voices(self):
-        """Initialize default voice profiles."""
-        default_voices = [
-            {
-                "name": "Mukesh",
-                "voice_id": "en",
-                "gender": "male",
-                "speaking_rate": 1.0,
-                "pitch": 0.0,
-                "volume": 1.0
-            },
-            {
-                "name": "Rakesh",
-                "voice_id": "en",
-                "gender": "male",
-                "speaking_rate": 1.1,
-                "pitch": -1.0,
-                "volume": 1.0
-            },
-            {
-                "name": "Adam",
-                "voice_id": "pNInz6obpgDQGcFmaJgB",
-                "gender": "male",
-                "speaking_rate": 1.0,
-                "pitch": 0.0,
-                "volume": 1.0,
-                "provider": "elevenlabs",
-                "stability": 0.5,
-                "similarity_boost": 0.75
-            },
-            {
-                "name": "Rachel",
-                "voice_id": "21m00Tcm4TlvDq8ikWAM",
-                "gender": "female",
-                "speaking_rate": 1.0,
-                "pitch": 0.0,
-                "volume": 1.0,
-                "provider": "elevenlabs",
-                "stability": 0.5,
-                "similarity_boost": 0.75
-            }
-        ]
+        """Initialize default voice profiles using dynamic voice fetching."""
+        # Import here to avoid circular imports
+        from agents.voice_synthesis.tools.elevenlabs_client import ElevenLabsWrapper
+
+        # Initialize default voices list
+        default_voices = []
+
+        # Try to get voices from ElevenLabs
+        try:
+            # Get API key from environment
+            api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+            if api_key:
+                # Initialize ElevenLabs client
+                elevenlabs_client = ElevenLabsWrapper(api_key=api_key)
+
+                # Get male and female voices
+                male_voices = elevenlabs_client.get_voices_by_category("male_american")
+                if not male_voices:
+                    male_voices = elevenlabs_client.get_voices_by_category("male_british")
+
+                female_voices = elevenlabs_client.get_voices_by_category("female_american")
+                if not female_voices:
+                    female_voices = elevenlabs_client.get_voices_by_category("female_british")
+
+                # Create host profiles using available voices
+                if male_voices:
+                    # First male host - Mukesh
+                    default_voices.append({
+                        "name": "Mukesh",
+                        "voice_id": male_voices[0]["voice_id"],
+                        "gender": "male",
+                        "speaking_rate": 1.0,
+                        "pitch": 0.0,
+                        "volume": 1.0,
+                        "provider": "elevenlabs",
+                        "stability": 0.5,
+                        "similarity_boost": 0.75
+                    })
+
+                    # Second male host - Rakesh (if we have at least 2 male voices)
+                    voice_id = male_voices[1]["voice_id"] if len(male_voices) > 1 else male_voices[0]["voice_id"]
+                    default_voices.append({
+                        "name": "Rakesh",
+                        "voice_id": voice_id,
+                        "gender": "male",
+                        "speaking_rate": 1.1,
+                        "pitch": -1.0,
+                        "volume": 1.0,
+                        "provider": "elevenlabs",
+                        "stability": 0.5,
+                        "similarity_boost": 0.75
+                    })
+
+                # Add female hosts if available
+                if female_voices:
+                    default_voices.append({
+                        "name": "Rachel",
+                        "voice_id": female_voices[0]["voice_id"],
+                        "gender": "female",
+                        "speaking_rate": 1.0,
+                        "pitch": 0.0,
+                        "volume": 1.0,
+                        "provider": "elevenlabs",
+                        "stability": 0.5,
+                        "similarity_boost": 0.75
+                    })
+
+                self.logger.info(f"Initialized {len(default_voices)} voice profiles from ElevenLabs")
+            else:
+                self.logger.warning("No ElevenLabs API key found, using fallback voices")
+        except Exception as e:
+            self.logger.error(f"Error initializing voices from ElevenLabs: {e}")
+
+        # If we couldn't get any voices from ElevenLabs, use fallback gTTS voices
+        if not default_voices:
+            self.logger.info("Using fallback gTTS voices")
+            default_voices = [
+                {
+                    "name": "Mukesh",
+                    "voice_id": "en",
+                    "gender": "male",
+                    "speaking_rate": 1.0,
+                    "pitch": 0.0,
+                    "volume": 1.0,
+                    "provider": "gtts"
+                },
+                {
+                    "name": "Rakesh",
+                    "voice_id": "en",
+                    "gender": "male",
+                    "speaking_rate": 1.1,
+                    "pitch": -1.0,
+                    "volume": 1.0,
+                    "provider": "gtts"
+                }
+            ]
 
         # Add default voices if they don't exist
         for voice in default_voices:

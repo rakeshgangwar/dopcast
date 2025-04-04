@@ -35,4 +35,6 @@ dependencies = [
     "langchain-community>=0.3.20",
     "elevenlabs>=1.56.0", # Added for ElevenLabs voice synthesis
     "ffmpeg>=1.4",
+    "langchain-exa>=0.2.1",
+    "firecrawl-py>=1.15.0",
 ]

@@ -12,6 +12,8 @@ from ..tools.web_scraper import WebScraperTool
 from ..tools.data_processor import DataProcessorTool
 from ..tools.entity_extractor import EntityExtractorTool
 from ..tools.youtube_transcript_tool import YouTubeTranscriptTool
+from ..tools.exa_search_tool import ExaSearchTool
+from ..tools.firecrawl_tool import FirecrawlTool
 from ..memory.cache_memory import CacheMemory
 from ..memory.entity_memory import EntityMemory
 from ..memory.research_memory import ResearchMemory
@@ -27,6 +29,8 @@ web_scraper = None
 data_processor = None
 entity_extractor = None
 youtube_transcript_tool = None
+exa_search_tool = None
+firecrawl_tool = None
 cache_memory = None
 entity_memory = None
 research_memory = None
@@ -41,7 +45,7 @@ def initialize_research(state: ResearchState) -> Dict[str, Any]:
     Returns:
         Updated state
     """
-    global web_scraper, data_processor, entity_extractor, youtube_transcript_tool, cache_memory, entity_memory, research_memory
+    global web_scraper, data_processor, entity_extractor, youtube_transcript_tool, exa_search_tool, firecrawl_tool, cache_memory, entity_memory, research_memory
 
     logger.info("Initializing research workflow")
 
@@ -65,10 +69,14 @@ def initialize_research(state: ResearchState) -> Dict[str, Any]:
         os.makedirs(memory_dir, exist_ok=True)
 
         # Initialize tools
-        web_scraper = WebScraperTool(data_dir)
+        web_scraper = WebScraperTool(data_dir, {"bypass_ssl_verification": True})
         data_processor = DataProcessorTool(data_dir)
         entity_extractor = EntityExtractorTool()
         youtube_transcript_tool = YouTubeTranscriptTool(data_dir)
+
+        # Initialize new research tools with API keys from environment
+        exa_search_tool = ExaSearchTool(data_dir, {"exa_api_key": os.environ.get("EXA_API_KEY", "")})
+        firecrawl_tool = FirecrawlTool(data_dir, {"firecrawl_api_key": os.environ.get("FIRECRAWL_API_KEY", "")})
 
         # Initialize memory components
         cache_memory = CacheMemory(cache_dir)
@@ -131,13 +139,25 @@ def collect_data(state: ResearchState) -> Dict[str, Any]:
         sources = config.get("sources", [])
 
         # Check if this is a fallback attempt
-        is_fallback = "tried_fallback" in config and not config["tried_fallback"]
-        if is_fallback:
+        is_fallback = config.get("tried_fallback", False)
+
+        # If we're in the collect_data_fallback node, we should use fallback data
+        if not is_fallback and state.get("current_node") == "collect_data_fallback":
             logger.info("Using fallback data collection")
             config["tried_fallback"] = True
 
-            # Use mock data for fallback
-            collected_data = web_scraper.get_mock_data(sport, event_type)
+            # Try to use Exa Search first
+            search_query = f"{sport} {event_type} {event_id if event_id else 'latest'} news"
+            logger.info(f"Searching with Exa: {search_query}")
+            exa_results = exa_search_tool.search(search_query, sport, event_type, event_id)
+
+            if exa_results and len(exa_results) > 0:
+                logger.info(f"Found {len(exa_results)} results with Exa Search")
+                collected_data = exa_results
+            else:
+                # Fall back to mock data if Exa Search fails
+                logger.info("No Exa Search results, using mock data")
+                collected_data = web_scraper.get_mock_data(sport, event_type)
 
             return {
                 "collected_data": collected_data,
@@ -145,8 +165,31 @@ def collect_data(state: ResearchState) -> Dict[str, Any]:
             }
 
         # Regular data collection
-        import asyncio
-        collected_data = asyncio.run(web_scraper.scrape_sources(sources, sport, event_type, event_id))
+        collected_data = []
+
+        # Try to use Firecrawl for the first few sources
+        if sources and len(sources) > 0:
+            # Use Firecrawl for up to 3 sources
+            firecrawl_sources = sources[:3]
+            logger.info(f"Using Firecrawl to crawl {len(firecrawl_sources)} sources")
+
+            for source in firecrawl_sources:
+                try:
+                    # Handle both string URLs and dictionary sources
+                    url = source if isinstance(source, str) else source.get("url", "")
+                    if url:
+                        logger.info(f"Crawling {url} with Firecrawl")
+                        result = firecrawl_tool.crawl_url(url, sport, event_type)
+                        if result:
+                            collected_data.append(result)
+                except Exception as e:
+                    logger.error(f"Error crawling URL with Firecrawl: {e}")
+
+        # If we didn't get any data from Firecrawl, fall back to web scraper
+        if not collected_data:
+            logger.info("No data from Firecrawl, falling back to web scraper")
+            import asyncio
+            collected_data = asyncio.run(web_scraper.scrape_sources(sources, sport, event_type, event_id))
 
         return {
             "collected_data": collected_data,
@@ -167,6 +210,7 @@ def collect_youtube_transcripts(state: ResearchState) -> Dict[str, Any]:
     Returns:
         Updated state with YouTube transcript data
     """
+    global youtube_transcript_tool
     logger.info("Collecting YouTube transcripts")
 
     try:
@@ -249,8 +293,11 @@ def process_data(state: ResearchState) -> Dict[str, Any]:
         sport = config.get("sport", "f1")
         event_type = config.get("event_type", "latest")
 
-        # Process the web data
-        processed_data = data_processor.process_data(collected_data, sport, event_type)
+        # Get event_id from config
+        event_id = config.get("event_id")
+
+        # Process the web data with event_id for better filtering
+        processed_data = data_processor.process_data(collected_data, sport, event_type, event_id)
 
         # Add YouTube data to processed data
         if youtube_data:

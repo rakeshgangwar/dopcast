@@ -31,14 +31,17 @@ class VoiceGeneratorTool:
         self.audio_dir = audio_dir
         self.config = config or {}
 
-        # Set default provider
-        self.default_provider = self.config.get("provider", "gtts")
-        self.logger.info(f"Initializing voice generator with default provider: {self.default_provider}")
-
-        # Initialize ElevenLabs client if API key is provided
+        # Set default provider - prefer ElevenLabs if API key is available
         config_api_key = self.config.get("elevenlabs_api_key", "")
         env_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
         elevenlabs_api_key = config_api_key or env_api_key
+
+        # Default to ElevenLabs if API key is available, otherwise use gTTS
+        self.default_provider = "elevenlabs" if elevenlabs_api_key else "gtts"
+        self.logger.info(f"Initializing voice generator with default provider: {self.default_provider}")
+
+        # Initialize ElevenLabs client if API key is provided
+        # (We already have the API key from above)
 
         self.logger.info(f"ElevenLabs API key from config: {bool(config_api_key)}, from env: {bool(env_api_key)}")
 
@@ -96,9 +99,17 @@ class VoiceGeneratorTool:
             text = f"{text} Let me elaborate on that point a bit more."
 
         # Generate filename for this segment
-        timestamp = asyncio.get_event_loop().time()
-        segment_filename = f"{speaker}_{int(timestamp)}_{hash(text) % 10000}.{audio_format}"
-        segment_path = os.path.join(self.audio_dir, "segments", segment_filename)
+        timestamp = int(asyncio.get_event_loop().time())
+        # Use a more deterministic filename to avoid duplicates
+        text_hash = abs(hash(text) % 10000)
+        segment_filename = f"{speaker}_{timestamp}_{text_hash}.{audio_format}"
+
+        # Ensure segments directory exists
+        segments_dir = os.path.join(self.audio_dir, "segments")
+        os.makedirs(segments_dir, exist_ok=True)
+
+        segment_path = os.path.join(segments_dir, segment_filename)
+        self.logger.info(f"Segment audio will be saved to: {segment_path}")
 
         # Determine which provider to use
         provider = voice_profile.get("provider", self.default_provider)
@@ -132,17 +143,30 @@ class VoiceGeneratorTool:
                     elif emotion == "sad" or emotion == "analytical":
                         stability += 0.1
 
-                    # Generate audio
-                    success = self.elevenlabs_client.text_to_speech(
-                        text=text,
-                        voice_id=voice_id,
-                        output_path=segment_path,
-                        stability=stability,
-                        similarity_boost=similarity_boost
-                    )
+                    # Ensure the segments directory exists
+                    os.makedirs(os.path.dirname(segment_path), exist_ok=True)
 
-                    if not success:
-                        self.logger.warning(f"ElevenLabs generation failed for {speaker}, falling back to gTTS")
+                    # Log the exact path where we're saving
+                    self.logger.info(f"Attempting to save ElevenLabs audio to: {segment_path}")
+
+                    # Generate audio
+                    try:
+                        success = self.elevenlabs_client.text_to_speech(
+                            text=text,
+                            voice_id=voice_id,
+                            output_path=segment_path,
+                            stability=stability,
+                            similarity_boost=similarity_boost
+                        )
+
+                        # Verify the file was created
+                        if success and os.path.exists(segment_path) and os.path.getsize(segment_path) > 0:
+                            self.logger.info(f"Successfully generated ElevenLabs audio for {speaker} at {segment_path}")
+                        else:
+                            self.logger.warning(f"ElevenLabs generation failed for {speaker}, falling back to gTTS")
+                            provider = "gtts"
+                    except Exception as e:
+                        self.logger.error(f"Error generating ElevenLabs audio: {e}, falling back to gTTS")
                         provider = "gtts"
 
             # Fall back to gTTS if needed
@@ -239,9 +263,16 @@ class VoiceGeneratorTool:
         self.logger.info(f"Generating main episode intro")
 
         # Generate filename for the intro
-        timestamp = asyncio.get_event_loop().time()
-        intro_filename = f"intro_{int(timestamp)}.{audio_format}"
+        timestamp = int(asyncio.get_event_loop().time())
+        intro_filename = f"intro_{timestamp}.{audio_format}"
+
+        # Ensure the audio directory exists
+        os.makedirs(self.audio_dir, exist_ok=True)
+
+        # Save intro to the main audio directory, not in segments
         intro_path = os.path.join(self.audio_dir, intro_filename)
+
+        self.logger.info(f"Intro audio will be saved to: {intro_path}")
 
         # Determine which provider to use
         provider = self.default_provider
@@ -250,18 +281,37 @@ class VoiceGeneratorTool:
         if provider == "elevenlabs" and self.elevenlabs_client:
             self.logger.info(f"Generating intro audio using ElevenLabs")
 
-            # Use a default voice for intro
-            default_voice_id = self.config.get("default_intro_voice_id", "21m00Tcm4TlvDq8ikWAM")  # Rachel voice
+            # Use a default voice for intro - fetch dynamically from ElevenLabs
+            if self.elevenlabs_client:
+                # Try to get a male voice for the intro
+                male_voices = self.elevenlabs_client.get_voices_by_category("male_american")
+                if male_voices:
+                    default_voice_id = male_voices[0]["voice_id"]
+                    self.logger.info(f"Using dynamically fetched voice ID for intro: {default_voice_id}")
+                else:
+                    # Fallback to any available voice
+                    default_voice_id = self.elevenlabs_client.default_voice
+            else:
+                # Fallback if no ElevenLabs client
+                default_voice_id = self.config.get("default_intro_voice_id", None)
 
             # Generate audio with ElevenLabs
-            success = self.elevenlabs_client.text_to_speech(
-                text=intro_text,
-                voice_id=default_voice_id,
-                output_path=intro_path
-            )
+            self.logger.info(f"Attempting to generate intro audio with voice ID: {default_voice_id}")
+            try:
+                success = self.elevenlabs_client.text_to_speech(
+                    text=intro_text,
+                    voice_id=default_voice_id,
+                    output_path=intro_path
+                )
 
-            if not success:
-                self.logger.warning("ElevenLabs intro generation failed, falling back to gTTS")
+                # Verify the file was created
+                if success and os.path.exists(intro_path) and os.path.getsize(intro_path) > 0:
+                    self.logger.info(f"Successfully generated intro audio at {intro_path}")
+                else:
+                    self.logger.warning("ElevenLabs intro generation failed, falling back to gTTS")
+                    provider = "gtts"
+            except Exception as e:
+                self.logger.error(f"Error generating ElevenLabs intro audio: {e}, falling back to gTTS")
                 provider = "gtts"
 
         # Fall back to gTTS if needed
