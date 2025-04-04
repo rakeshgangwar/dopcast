@@ -5,3 +5,5 @@ You will always keep a note of all the ideas that come to your mind in docs/wind
 
 - You have access to various MCP tools. If you think using one of those will help you, use it.
 - You have access to the internet. If you think using the internet will help you, use it.
+
+- We are using uv in the project to manage dependencies. Do not use python or pip or conda directly.

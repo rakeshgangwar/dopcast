@@ -8,3 +8,18 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Output directories
+output/
+backup/
+
+# Environment files
+.env
+.initialized
+
+# IDE files
+.idea/
+
+# Test output files
+*.json
+!package.json

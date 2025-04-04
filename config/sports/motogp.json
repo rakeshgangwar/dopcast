@@ -1,0 +1,27 @@
+{
+  "name": "MotoGP",
+  "short_name": "MotoGP",
+  "data_sources": [
+    "https://www.motogp.com",
+    "https://www.crash.net/motogp",
+    "https://www.motorsport.com/motogp"
+  ],
+  "teams": [
+    "Ducati Lenovo Team",
+    "Monster Energy Yamaha MotoGP",
+    "Repsol Honda Team",
+    "Red Bull KTM Factory Racing",
+    "Aprilia Racing",
+    "Gresini Racing MotoGP",
+    "Prima Pramac Racing",
+    "LCR Honda",
+    "Tech3 GasGas Factory Racing",
+    "VR46 Racing Team"
+  ],
+  "event_types": [
+    "race",
+    "qualifying",
+    "practice"
+  ],
+  "podcast_intro": "Welcome to MotoGP Insider, your ultimate source for MotoGP analysis and insights."
+}

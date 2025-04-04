@@ -8,7 +8,7 @@ DopCast is an innovative platform that uses AI agents to generate engaging podca
 
 - **Multi-agent System**: Specialized AI agents handle different aspects of podcast creation
 - **Automated Research**: Gather and analyze information from various sources
-- **Natural Dialogue**: Generate engaging, conversational scripts
+- **Natural Dialogue**: Generate engaging, conversational scripts (with PDF and Markdown exports)
 - **Voice Synthesis**: Convert scripts to realistic speech
 - **Audio Production**: Add music, effects, and professional polish
 - **Scheduling System**: Automate podcast creation based on race calendar
@@ -35,13 +35,13 @@ cd dopcast
 2. Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 3. Initialize the system:
 
 ```bash
-python initialize.py
+uv run initialize.py
 ```
 
 4. Configure your environment variables by editing the `.env` file:
@@ -58,19 +58,19 @@ OPENAI_API_KEY=your_api_key_here
 Generate a podcast:
 
 ```bash
-python cli.py generate --sport f1 --event-id monaco_2023 --episode-type race_review
+uv run cli.py generate --sport f1 --event-id monaco_2023 --episode-type race_review
 ```
 
 Schedule a podcast:
 
 ```bash
-python cli.py schedule --sport motogp --event-id mugello_2023 --time 14:30
+uv run cli.py schedule --sport motogp --event-id mugello_2023 --time 14:30
 ```
 
 List recent podcasts:
 
 ```bash
-python cli.py list
+uv run cli.py list
 ```
 
 #### Using the Web Interface
@@ -78,7 +78,7 @@ python cli.py list
 Start the web interface and API:
 
 ```bash
-python main.py full
+uv run main.py full
 ```
 
 Then open your browser and navigate to:
@@ -131,6 +131,7 @@ The Streamlit-based web interface allows for:
 - Easy podcast generation with custom parameters
 - Scheduling and managing podcast creation
 - Viewing and downloading generated podcasts
+- Downloading scripts in Markdown and PDF formats
 - System monitoring and configuration
 
 ## Extending DopCast
@@ -150,6 +151,13 @@ Edit the voice profiles in `config/voice_profiles.json` to create custom voices 
 ### Adding Sound Effects
 
 Place audio files in `content/audio/assets/` to make them available for the AudioProductionAgent.
+
+### Script Formats
+
+The system supports exporting podcast scripts in multiple formats:
+- **JSON**: Default format containing all script data
+- **Markdown**: Clean, readable format for easy sharing and editing
+- **PDF**: Professional format for printing or distribution
 
 ## License
 

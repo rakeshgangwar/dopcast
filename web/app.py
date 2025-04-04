@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import json
+import os
 from datetime import datetime, timedelta
 import time
 
@@ -259,7 +260,7 @@ elif page == "Recent Podcasts":
                 with st.expander(f"{icon} {run['sport'].upper()} - {run.get('episode_type', 'unknown')} - {run['started_at']}"):
                     st.json(run)
                     
-                    # If completed, show download links
+                    # If completed, show download links for audio files
                     if status == "completed" and "result" in run and "audio_files" in run["result"]:
                         st.subheader("Download Podcast")
                         for audio_file in run["result"]["audio_files"]:
@@ -268,6 +269,27 @@ elif page == "Recent Podcasts":
                                 data=b"Placeholder",  # In a real app, this would be the actual file
                                 file_name=audio_file["filename"],
                                 mime=f"audio/{audio_file['format']}"
+                            )
+                    
+                    # If completed, show download links for script files (new feature)
+                    if status == "completed" and "result" in run and "podcast" in run["result"] and "file_paths" in run["result"]["podcast"]:
+                        st.subheader("Download Script")
+                        file_paths = run["result"]["podcast"]["file_paths"]
+                        
+                        if "markdown" in file_paths:
+                            st.download_button(
+                                "Download Markdown Script",
+                                data=b"Placeholder",  # In a real app, this would be the actual file content
+                                file_name=os.path.basename(file_paths["markdown"]),
+                                mime="text/markdown"
+                            )
+                        
+                        if "pdf" in file_paths:
+                            st.download_button(
+                                "Download PDF Script",
+                                data=b"Placeholder",  # In a real app, this would be the actual file content
+                                file_name=os.path.basename(file_paths["pdf"]),
+                                mime="application/pdf"
                             )
 
 # About page
@@ -295,6 +317,7 @@ elif page == "About":
         - Automated research and data collection
         - Natural-sounding voice synthesis
         - Regular podcast episodes following race weekends
+        - Script exports in Markdown and PDF formats
         - Expandable to additional motorsports
     """)
     
