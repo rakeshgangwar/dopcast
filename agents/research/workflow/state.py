@@ -11,16 +11,18 @@ class ResearchState(TypedDict):
     """
     # Input data for the workflow run
     input_data: Dict[str, Any]
-    
-    # Intermediate state data
+
+    # Configuration
     config: Optional[Dict[str, Any]] = None
-    collected_data: Optional[List[Dict[str, Any]]] = None
-    processed_data: Optional[Dict[str, Any]] = None
-    entities: Optional[Dict[str, Any]] = None
-    trends: Optional[Dict[str, Any]] = None
-    
+
+    # Intermediate state data
+    exa_results: Optional[Dict[str, Any]] = None
+    youtube_results: Optional[Dict[str, Any]] = None
+    firecrawl_results: Optional[Dict[str, Any]] = None
+    comprehensive_summary: Optional[Dict[str, Any]] = None
+
     # Final output
     research_report: Optional[Dict[str, Any]] = None
-    
+
     # Error tracking
     error_info: Optional[str] = None

@@ -14,6 +14,55 @@ import asyncio
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, SystemMessage
 
+class LLMClient:
+    """
+    Generic LLM client interface that wraps specific LLM implementations.
+    Currently uses GeminiLLMClient as the default implementation.
+    """
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """
+        Initialize the LLM client.
+
+        Args:
+            config: Configuration parameters
+        """
+        self.logger = logging.getLogger("dopcast.llm_client")
+        self.config = config or {}
+        self.client = GeminiLLMClient(self.config)
+        self.logger.info("Initialized LLM client with GeminiLLMClient")
+
+    async def generate_text(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """
+        Generate text based on a prompt.
+
+        Args:
+            prompt: The prompt to generate text from
+            system_prompt: Optional system prompt for context
+
+        Returns:
+            Generated text
+        """
+        return await self.client.generate_text(prompt, system_prompt)
+
+    async def generate_structured_output(self,
+                                      prompt: str,
+                                      output_schema: Dict[str, Any] | List[Dict[str, Any]],
+                                      system_prompt: Optional[str] = None) -> Any:
+        """
+        Generate structured output based on a prompt and schema.
+
+        Args:
+            prompt: The prompt to generate from
+            output_schema: JSON schema for the expected output (dict or list)
+            system_prompt: Optional system prompt for context
+
+        Returns:
+            Structured output matching the schema (dict, list, or other JSON-compatible type)
+        """
+        return await self.client.generate_structured_output(prompt, output_schema, system_prompt)
+
+
 class GeminiLLMClient:
     """
     Client for interacting with Google's Gemini models.

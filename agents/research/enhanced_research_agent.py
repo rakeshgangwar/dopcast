@@ -11,7 +11,7 @@ import uuid
 
 from agents.base_agent import BaseAgent
 from .workflow.state import ResearchState
-from .workflow.research_graph import create_research_graph
+from .workflow.enhanced_research_graph import create_enhanced_research_graph
 from langgraph.checkpoint.memory import MemorySaver
 
 class EnhancedResearchAgent(BaseAgent):
@@ -32,7 +32,7 @@ class EnhancedResearchAgent(BaseAgent):
 
         # Create the research graph
         self.checkpointer = MemorySaver()
-        self.graph = create_research_graph()
+        self.graph = create_enhanced_research_graph()
 
         # Initialize active runs tracking
         self.active_runs = {}
