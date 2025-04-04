@@ -5,6 +5,7 @@ Each function represents a node in the script generation workflow graph.
 
 import logging
 import os
+import asyncio
 from typing import Dict, Any, List
 from datetime import datetime
 
@@ -52,8 +53,25 @@ def initialize_script_generation(state: ScriptState) -> Dict[str, Any]:
         # Ensure directories exist
         os.makedirs(content_dir, exist_ok=True)
 
-        # Initialize tools
-        dialogue_generator = DialogueGeneratorTool()
+        # Extract configuration parameters
+        custom_parameters = input_data.get("custom_parameters", {})
+
+        # Configure LLM settings
+        llm_config = custom_parameters.get("llm_config", {})
+
+        # If no specific LLM config is provided, set up defaults
+        if not llm_config:
+            llm_config = {
+                "model_name": "gemini-2.0-flash",
+                "temperature": 0.7,
+                "max_tokens": 1024
+            }
+
+        # Initialize tools with LLM configuration
+        dialogue_generator = DialogueGeneratorTool({
+            "llm_config": llm_config,
+            "use_cache": custom_parameters.get("use_llm_cache", True)
+        })
         script_formatter = ScriptFormatterTool(content_dir)
         sound_effect_manager = SoundEffectManagerTool()
 
@@ -61,15 +79,13 @@ def initialize_script_generation(state: ScriptState) -> Dict[str, Any]:
         script_memory = ScriptMemory(content_dir)
         host_memory = HostMemory(content_dir)
 
-        # Extract configuration parameters
-        custom_parameters = input_data.get("custom_parameters", {})
-
         # Set up configuration for the workflow
         config = {
             "script_style": custom_parameters.get("script_style", "conversational"),
             "include_sound_effects": custom_parameters.get("include_sound_effects", True),
             "include_transitions": custom_parameters.get("include_transitions", True),
-            "humor_level": custom_parameters.get("humor_level", "moderate")
+            "humor_level": custom_parameters.get("humor_level", "moderate"),
+            "use_llm": custom_parameters.get("use_llm", True)
         }
 
         return {"config": config}
@@ -145,7 +161,7 @@ def prepare_host_personalities(state: ScriptState) -> Dict[str, Any]:
 
         # Finally, add any remaining hosts needed
         if len(host_personalities) < host_count:
-            for host_name, host_info in all_hosts.items():
+            for host_name in all_hosts.keys():
                 host = host_memory.get_host(host_name)
                 if host and host["name"] not in [h["name"] for h in host_personalities]:
                     host_personalities.append(host)
@@ -197,27 +213,46 @@ def generate_script_sections(state: ScriptState) -> Dict[str, Any]:
 
         # Get sections from content outline
         sections = content_outline.get("sections", [])
+        title = content_outline.get("title", "Untitled Episode")
+        description = content_outline.get("description", "")
+
+        # Create an event loop to run async functions
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         # Generate script for each section
         script_sections = []
 
-        for section in sections:
-            script_section = generate_section_script(
-                section, host_personalities, script_style, humor_level,
-                include_sound_effects, include_transitions
-            )
-            script_sections.append(script_section)
+        # Process sections asynchronously
+        async def process_sections():
+            nonlocal script_sections
 
-        # Add intro and outro if not already included
-        if not any(s.get("name") == "intro" for s in script_sections):
-            title = content_outline.get("title", "Untitled Episode")
-            description = content_outline.get("description", "")
-            intro = generate_intro_script(title, description, host_personalities, include_sound_effects)
-            script_sections.insert(0, intro)
+            # Process all sections
+            section_tasks = []
+            for section in sections:
+                task = generate_section_script(
+                    section, host_personalities, script_style, humor_level,
+                    include_sound_effects, include_transitions
+                )
+                section_tasks.append(task)
 
-        if not any(s.get("name") == "outro" for s in script_sections):
-            outro = generate_outro_script(host_personalities, include_sound_effects)
-            script_sections.append(outro)
+            # Wait for all section scripts to be generated
+            section_results = await asyncio.gather(*section_tasks)
+            script_sections.extend(section_results)
+
+            # Add intro if not already included
+            if not any(s.get("name") == "intro" for s in script_sections):
+                intro = await generate_intro_script(title, description, host_personalities, include_sound_effects)
+                script_sections.insert(0, intro)
+
+            # Add outro if not already included
+            if not any(s.get("name") == "outro" for s in script_sections):
+                outro = await generate_outro_script(host_personalities, include_sound_effects, title)
+                script_sections.append(outro)
+
+        # Run the async function in the event loop
+        loop.run_until_complete(process_sections())
+        loop.close()
 
         logger.info(f"Generated {len(script_sections)} script sections")
 
@@ -306,7 +341,7 @@ def format_script(state: ScriptState) -> Dict[str, Any]:
 
 # Helper functions
 
-def generate_section_script(section: Dict[str, Any], host_personalities: List[Dict[str, Any]],
+async def generate_section_script(section: Dict[str, Any], host_personalities: List[Dict[str, Any]],
                           script_style: str, humor_level: str,
                           include_sound_effects: bool, include_transitions: bool) -> Dict[str, Any]:
     """
@@ -364,7 +399,7 @@ def generate_section_script(section: Dict[str, Any], host_personalities: List[Di
         host = host_personalities[host_index]
 
         # Convert talking point to natural dialogue
-        dialogue = dialogue_generator.talking_point_to_dialogue(
+        dialogue = await dialogue_generator.talking_point_to_dialogue(
             point_content, host, script_style, humor_level
         )
 
@@ -379,7 +414,7 @@ def generate_section_script(section: Dict[str, Any], host_personalities: List[Di
             if next_host_index != host_index:
                 # Add a detailed response or handoff
                 next_host = host_personalities[next_host_index]
-                handoff = dialogue_generator.generate_handoff(host, next_host, point_content)
+                handoff = await dialogue_generator.generate_handoff(host, next_host, point_content)
 
                 dialogue_lines.append({
                     "speaker": next_host["name"],
@@ -400,7 +435,7 @@ def generate_section_script(section: Dict[str, Any], host_personalities: List[Di
             question_host = host_personalities[question_host_index]
 
             # Generate a follow-up question
-            follow_up_question = dialogue_generator.generate_follow_up_question(question_host, point_content)
+            follow_up_question = await dialogue_generator.generate_follow_up_question(question_host, point_content)
 
             dialogue_lines.append({
                 "speaker": question_host["name"],
@@ -408,8 +443,7 @@ def generate_section_script(section: Dict[str, Any], host_personalities: List[Di
             })
 
             # Generate a detailed response from the original host
-            question_type = random.choice(["championship", "strategy", "technical", "fan", "decision"])
-            detailed_response = dialogue_generator.generate_detailed_response(host, question_type)
+            detailed_response = await dialogue_generator.generate_detailed_response(host, follow_up_question, point_content)
 
             dialogue_lines.append({
                 "speaker": host["name"],
@@ -436,7 +470,7 @@ def generate_section_script(section: Dict[str, Any], host_personalities: List[Di
 
     return script_section
 
-def generate_intro_script(title: str, description: str,
+async def generate_intro_script(title: str, description: str,
                         host_personalities: List[Dict[str, Any]],
                         include_sound_effects: bool) -> Dict[str, Any]:
     """
@@ -452,7 +486,7 @@ def generate_intro_script(title: str, description: str,
         Script for the intro section
     """
     # Generate dialogue lines
-    dialogue_lines = dialogue_generator.generate_intro_dialogue(title, description, host_personalities)
+    dialogue_lines = await dialogue_generator.generate_intro_dialogue(title, description, host_personalities)
 
     # Add sound effects
     sound_effects = []
@@ -474,20 +508,22 @@ def generate_intro_script(title: str, description: str,
         "word_count": word_count
     }
 
-def generate_outro_script(host_personalities: List[Dict[str, Any]],
-                        include_sound_effects: bool) -> Dict[str, Any]:
+async def generate_outro_script(host_personalities: List[Dict[str, Any]],
+                        include_sound_effects: bool,
+                        episode_title: str = "") -> Dict[str, Any]:
     """
     Generate script for the episode conclusion.
 
     Args:
         host_personalities: List of host personality definitions
         include_sound_effects: Whether to include sound effects
+        episode_title: Optional title of the episode for context
 
     Returns:
         Script for the outro section
     """
     # Generate dialogue lines
-    dialogue_lines = dialogue_generator.generate_outro_dialogue(host_personalities)
+    dialogue_lines = await dialogue_generator.generate_outro_dialogue(host_personalities, episode_title)
 
     # Add sound effects
     sound_effects = []

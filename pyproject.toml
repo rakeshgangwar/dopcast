@@ -31,4 +31,5 @@ dependencies = [
     "aiohttp>=3.11.16",
     "youtube-transcript-api>=1.0.3", # Added for YouTube transcript extraction
     "yt-dlp>=2025.3.31",
+    "langchain-google-genai>=2.1.2",
 ]

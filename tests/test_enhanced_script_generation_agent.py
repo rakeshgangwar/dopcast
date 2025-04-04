@@ -96,6 +96,22 @@ async def test_enhanced_script_generation_agent():
         ]
     }
 
+    # Check if Google API key is set
+    if not os.environ.get("GOOGLE_API_KEY"):
+        logger.warning("GOOGLE_API_KEY environment variable not set. Using template-based generation.")
+        logger.info("For LLM-based generation, set your Google API key with: export GOOGLE_API_KEY='your-api-key'")
+        use_llm = False
+    else:
+        use_llm = True
+        logger.info("Using Google Gemini LLM for dialogue generation")
+
+    # Configure LLM settings
+    llm_config = {
+        "model_name": "gemini-2.0-flash",
+        "temperature": 0.7,
+        "max_tokens": 1024
+    }
+
     # Test input data
     input_data = {
         "content_outline": content_outline,
@@ -103,7 +119,10 @@ async def test_enhanced_script_generation_agent():
             "script_style": "conversational",
             "humor_level": "moderate",
             "include_sound_effects": True,
-            "include_transitions": True
+            "include_transitions": True,
+            "use_llm": use_llm,
+            "llm_config": llm_config,
+            "use_llm_cache": True
         }
     }
 
@@ -129,6 +148,7 @@ async def test_enhanced_script_generation_agent():
     logger.info(f"Word count: {result.get('word_count')}")
     logger.info(f"Total duration: {result.get('total_duration')} seconds")
     logger.info(f"Number of sections: {len(result.get('sections', []))}")
+    logger.info(f"LLM used: {input_data['custom_parameters']['use_llm']}")
     logger.info(f"Output formats: {', '.join(result.get('file_paths', {}).keys())}")
 
     return result
