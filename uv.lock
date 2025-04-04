@@ -337,6 +337,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "fastapi-cors" },
     { name = "fastf1" },
+    { name = "ffmpeg" },
     { name = "gtts" },
     { name = "langchain" },
     { name = "langchain-community" },
@@ -370,6 +371,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.11" },
     { name = "fastapi-cors", specifier = "==0.0.6" },
     { name = "fastf1", specifier = ">=3.5.3" },
+    { name = "ffmpeg", specifier = ">=1.4" },
     { name = "gtts", specifier = ">=2.5.4" },
     { name = "langchain", specifier = "==0.3.22" },
     { name = "langchain-community", specifier = ">=0.3.20" },
@@ -472,6 +474,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/88/d1/1a10bb8595e54e306
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2f/47/c1dd9507ad0d3e1cc30ea4d93a6eb1103c35a03f013074d6c37049c7345e/fastf1-3.5.3-py3-none-any.whl", hash = "sha256:94ede57d7587e4c980b6745a955cc05890fecd932ed22b3b1b6774150bc50705", size = 151152 },
 ]
+
+[[package]]
+name = "ffmpeg"
+version = "1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/cc/3b7408b8ecf7c1d20ad480c3eaed7619857bf1054b690226e906fdf14258/ffmpeg-1.4.tar.gz", hash = "sha256:6931692c890ff21d39938433c2189747815dca0c60ddc7f9bb97f199dba0b5b9", size = 5055 }
 
 [[package]]
 name = "filelock"
